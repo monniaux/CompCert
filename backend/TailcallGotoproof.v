@@ -123,3 +123,113 @@ Lemma transf_final_states:
 Proof.
   intros. inv H0. inv H. inv STACKS. constructor.
 Qed.
+
+Definition measure (s: state) : nat :=
+  match s with
+  | (State stk cur_fn sp pc rs m) =>
+    match (fn_code cur_fn) ! pc with
+    | Some (Itailcall sig (inr symb) args) =>
+      match PTree.get symb (prog_defmap prog) with
+      | Some (Gfun (Internal f)) =>
+        if function_eq f cur_fn
+        then
+          match args with
+          | nil => 2
+          | _ => 1
+          end
+        else 1
+      | _ => 1
+      end
+    | _ => 1
+    end
+  | _ => 1
+  end.
+
+
+Theorem simulation:
+  forall S1 t S2,
+  step ge S1 t S2 ->
+  forall S1' (MS: match_states S1 S1'),
+  (exists S2', plus step tge S1' t S2' /\ match_states S2 S2')
+  \/ (measure S2 < measure S1 /\ t = E0 /\ match_states S2 S1')%nat.
+Proof.
+  induction 1; intros; inv MS.
+  
+- (* nop *)
+  exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Inop; eauto.
+  econstructor; eauto.
+
+- (* op *)
+  exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Iop; eauto.
+  rewrite <- H0.
+  apply eval_operation_preserved.
+  exact symbols_preserved.
+  constructor; auto.
+  
+(* load *)
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Iload; eauto.
+  rewrite <- H0.
+  apply eval_addressing_preserved. exact symbols_preserved.
+  constructor; auto.
+
+- (* store *)
+  exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  assert (eval_addressing tge sp addr rs ## args = Some a).
+  rewrite <- H0. apply eval_addressing_preserved. exact symbols_preserved.
+  eapply plus_one. eapply exec_Istore; eauto.
+  constructor; auto. 
+(* call *)
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Icall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. constructor; auto. constructor.
+(* tailcall *)
+- admit.
+(* builtin *)
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Ibuiltin; eauto.
+    eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
+    eapply external_call_symbols_preserved; eauto. apply senv_preserved.
+  constructor; auto.
+(* cond *)
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Icond; eauto.
+  constructor; auto.
+(* jumptbl *)
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Ijumptable; eauto.
+  constructor; auto.
+(* return *)
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Ireturn; eauto.
+  constructor; auto.
+(* internal function *)
+- simpl. left; econstructor; split.
+  eapply plus_one. eapply exec_function_internal; eauto.
+  constructor; auto.
+(* external function *)
+- left; econstructor; split.
+  eapply plus_one.
+  eapply exec_function_external; eauto.
+    eapply external_call_symbols_preserved; eauto. apply senv_preserved.
+  constructor; auto.
+(* return *)
+- inv STACKS. inv H1.
+  left; econstructor; split.
+  eapply plus_one.
+  eapply exec_return; eauto.
+  constructor; auto.
+Admitted.
