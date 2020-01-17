@@ -1,40 +1,37 @@
 Require Import Coqlib Maps AST Registers Op RTL Conventions.
 
-Definition transf_instr (cur_fn_id: ident) (cur_fn : function) (pc: node) (instr: instruction) :=
+Definition defmap_t := PTree.t (globdef fundef unit).
+
+Axiom function_eq_dec : forall f g : function, { f=g } + { f<>g }.
+
+Definition transf_instr (defmap : defmap_t) (cur_fn : function) (pc: node) (instr: instruction) :=
   match instr with
   | Itailcall sig (inr symb) args =>
-    if ident_eq symb cur_fn_id
-    then
-      match args with
-      | nil => Inop (fn_entrypoint cur_fn)
-      | _ => Itailcall sig (inr symb) args
+    match PTree.get symb defmap with
+    | Some (Gfun (Internal f)) =>
+      if function_eq_dec f cur_fn
+      then
+        match args with
+        | nil => Inop (fn_entrypoint cur_fn)
+        | _ => instr
+        end
+      else instr
+    | _ => instr
       end
-    else Itailcall sig (inr symb) args
   | _ => instr
   end.
 
-Definition transf_function (id : ident) (f : function) : function :=
+Definition transf_function (defmap : defmap_t) (f : function) : function :=
     mkfunction
     f.(fn_sig)
     f.(fn_params)
     f.(fn_stacksize)
-    (PTree.map (transf_instr id f) f.(fn_code))
+    (PTree.map (transf_instr defmap f) f.(fn_code))
     f.(fn_entrypoint).
 
-Definition transf_fundef (id : ident) (fd: RTL.fundef): RTL.fundef :=
-  match fd with
-  | Internal f => Internal (transf_function id f)
-  | _ => fd
-  end.
+Definition transf_fundef (defmap : defmap_t) (fd: fundef) : fundef :=
+  AST.transf_fundef (transf_function defmap) fd.
 
-Definition transform_program_globdef (idg : ident * globdef fundef unit) :=
-  match idg with
-  | (id, Gfun f) => (id, Gfun (transf_fundef id f))
-  | (id, Gvar v) => (id, Gvar v)
-  end.
+Definition transf_program (p: program): program :=
+  AST.transform_program (transf_fundef (prog_defmap p)) p.
 
-Definition transform_program (p: program) : program :=
-  mkprogram
-    (List.map transform_program_globdef p.(prog_defs))
-    p.(prog_public)
-    p.(prog_main).
