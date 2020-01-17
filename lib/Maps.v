@@ -91,8 +91,12 @@ Module Type TREE.
      | None, None => True
      | Some y1, Some y2 => eqA y1 y2 = true
      | _, _ => False
-    end).
-
+     end).
+  
+  Parameter phys_eq : forall (A : Type),
+       (forall a b : A, {a = b} + {a <> b}) ->
+       forall m1 m2 : t A, {m1 = m2} + {m1 <> m2}.
+  
   (** Applying a function to all data of a tree. *)
   Parameter map:
     forall (A B: Type), (elt -> A -> B) -> t A -> t B.
@@ -434,9 +438,19 @@ Module PTree <: TREE.
       match m1, m2 with
       | Leaf, Leaf => true
       | (Node l1 (Some o1) r1), (Node l2 (Some o2) r2) =>
-        (beqA o1 o2) && (phys_beq l1 l2) && (phys_beq r1 r2)
+        match beqA o1 o2 with
+        | false => false
+        | true =>
+          match phys_beq l1 l2 with
+          | false => false
+          | true => phys_beq r1 r2
+          end
+        end
       | (Node l1 None r1), (Node l2 None r2) =>
-        (phys_beq l1 l2) && (phys_beq r1 r2)
+        match phys_beq l1 l2 with
+        | false => false
+        | true => phys_beq r1 r2
+        end
       | _, _ => false
       end.
 
@@ -504,7 +518,29 @@ Module PTree <: TREE.
       all: congruence.
     Qed.
   End BOOLEAN_EQUALITY.
-
+  
+  Definition phys_eq:
+    forall A : Type,
+    (forall x y : A, {x = y} + {x <> y}) ->
+    forall m1 m2 : (t A), { m1 = m2 } + { m1 <> m2}.
+  Proof.
+    intros A test.
+    pose (fun x y => if test x y then true else false) as test2.
+    assert (forall x y, test2 x y = true <-> x = y) as Htest2.
+    {
+      intros.
+      unfold test2.
+      destruct (test x y); split; trivial; congruence.
+    }
+    intros.
+    pose proof (phys_beq_correct test2 Htest2 m1 m2) as EQ.
+    destruct (phys_beq test2 m1 m2).
+    - left. apply EQ. reflexivity.
+    - right. intro Z. destruct EQ as [EQ1 EQ2].
+      pose proof (EQ2 Z).
+      discriminate.
+  Qed.
+    
   Fixpoint prev_append (i j: positive) {struct i} : positive :=
     match i with
       | xH => j
