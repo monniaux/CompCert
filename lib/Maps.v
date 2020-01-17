@@ -430,6 +430,79 @@ Module PTree <: TREE.
           apply IHm1_2. intros; apply (H (xI x)).
     Qed.
 
+    Fixpoint phys_beq (m1 m2: t A) {struct m1} : bool :=
+      match m1, m2 with
+      | Leaf, Leaf => true
+      | (Node l1 (Some o1) r1), (Node l2 (Some o2) r2) =>
+        (beqA o1 o2) && (phys_beq l1 l2) && (phys_beq r1 r2)
+      | (Node l1 None r1), (Node l2 None r2) =>
+        (phys_beq l1 l2) && (phys_beq r1 r2)
+      | _, _ => false
+      end.
+
+    Variable beqA_correct: forall a b, (beqA a b) = true <-> a=b.
+
+    Lemma true_true_eqv :
+      forall X: Type, forall a b : X,
+          ((true = true) <-> (a = b)) <-> a=b.
+    Proof.
+      intros; trivial.
+      tauto.
+    Qed.
+
+    Lemma false_false_eqv :
+      forall X: Type, forall a b : X,
+          ((false = false) <-> (a = b)) <-> a=b.
+    Proof.
+      intros; trivial.
+      tauto.
+    Qed.
+
+    Lemma false_true_eqv :
+      forall X: Type, forall a b : X,
+          ((false = true) <-> (a = b)) <-> (a <> b).
+    Proof.
+      intros; trivial.
+      intuition congruence.
+    Qed.
+
+    Lemma true_false_eqv :
+      forall X: Type, forall a b : X,
+          ((true = false) <-> (a = b)) <-> (a <> b).
+    Proof.
+      intros; trivial.
+      intuition congruence.
+    Qed.
+    
+    Lemma phys_beq_correct:
+      forall m1 m2, phys_beq m1 m2 = true <-> m1 = m2.
+    Proof.
+      induction m1 as [ | l1 Hl1 o1 r1 Hr1]; simpl.
+      {
+        destruct m2; simpl; split; trivial; try discriminate.
+      }
+      destruct m2 as [ | l2 o2 r2]; simpl.
+      {
+        destruct o1; split; trivial; discriminate.
+      }
+      destruct o1 as [ e1 | ]; destruct o2 as [ e2 | ].
+      all: try (split; discriminate).
+      all: pose proof (Hl1 l2) as Hl;
+           pose proof (Hr1 r2) as Hr.
+      all: destruct (phys_beq l1 l2).
+      all: destruct (phys_beq r1 r2).
+      all: try pose proof (beqA_correct e1 e2) as BEQA.
+      all: try destruct (beqA e1 e2).
+      all: simpl.
+      1, 9: intuition congruence.
+      all: split; try discriminate.
+      all: intro Z; exfalso.
+      all: try rewrite true_true_eqv in *.
+      all: try rewrite false_false_eqv in *.
+      all: try rewrite false_true_eqv in *.
+      all: try rewrite true_false_eqv in *.
+      all: congruence.
+    Qed.
   End BOOLEAN_EQUALITY.
 
   Fixpoint prev_append (i j: positive) {struct i} : positive :=
