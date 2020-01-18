@@ -193,7 +193,57 @@ Proof.
     apply sig_preserved.
   constructor. constructor; auto. constructor.
 (* tailcall *)
-- admit.
+- exploit transf_function_at; eauto. intros TR; inv TR.
+  destruct ros as [register | identifier] in *.
+  {
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. assumption.
+  }
+  destruct ((prog_defmap prog) ! identifier) as [ fn_def |] in *.
+  2: {
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. assumption.
+  }
+  destruct fn_def as [fn_def0 | ] in *.
+  2: {
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. assumption.
+  }
+  destruct fn_def0 as [int_f | ext_f] in *.
+  2: {
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. assumption.
+  }
+  destruct (_ int_f f) as [ SAME | NOT_SAME ].
+  2: {
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. assumption.
+  }
+  destruct args as [ | args_h args_t].
+  2: {
+  left; econstructor; split.
+  eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  constructor. assumption.
+  }
+  admit.
+     
 (* builtin *)
 - exploit transf_function_at; eauto. intros TR; inv TR.
   left; econstructor; split.
