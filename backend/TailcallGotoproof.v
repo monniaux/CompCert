@@ -86,6 +86,23 @@ Ltac TR_AT :=
         generalize (transf_function_at _ _ _ A); intros
   end.
 
+Definition is_goto_tailcall (cur_fn : function) (pc : node) : bool :=
+    match (fn_code cur_fn) ! pc with
+    | Some (Itailcall sig (inr symb) args) =>
+      match PTree.get symb (prog_defmap prog) with
+      | Some (Gfun (Internal f)) =>
+        if function_eq f cur_fn
+        then
+          match args with
+          | nil => true
+          | _ => false
+          end
+        else false
+      | _ => false
+      end
+    | _ => false
+    end.
+
 Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
   | match_frames_intro: forall res f sp pc rs,
       match_frames (Stackframe res f sp pc rs)
@@ -100,6 +117,12 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (STACKS: list_forall2 match_frames stk stk'),
       match_states (Callstate stk f args m)
                    (Callstate stk' (transf_fundef (prog_defmap prog) f) args m)
+  | match_goto_callstates: forall stk f stkf pc rs m m' stk'
+      (STACKS: list_forall2 match_frames stk stk')
+      (GOTO: is_goto_tailcall f pc=true)
+      (FREE: Mem.free m' stkf 0 (fn_stacksize f) = Some m),
+      match_states (Callstate stk (Internal f) nil m)
+                   (State stk' (transf_function (prog_defmap prog) f) (Vptr stkf Ptrofs.zero) pc rs m')
   | match_returnstates: forall stk v m stk'
         (STACKS: list_forall2 match_frames stk stk'),
       match_states (Returnstate stk v m)
@@ -123,38 +146,29 @@ Lemma transf_final_states:
 Proof.
   intros. inv H0. inv H. inv STACKS. constructor.
 Qed.
-
+  
 Definition measure (s: state) : nat :=
   match s with
   | (State stk cur_fn sp pc rs m) =>
-    match (fn_code cur_fn) ! pc with
-    | Some (Itailcall sig (inr symb) args) =>
-      match PTree.get symb (prog_defmap prog) with
-      | Some (Gfun (Internal f)) =>
-        if function_eq f cur_fn
-        then
-          match args with
-          | nil => 2
-          | _ => 1
-          end
-        else 1
-      | _ => 1
-      end
-    | _ => 1
-    end
-  | _ => 1
+    if is_goto_tailcall cur_fn pc then 1 else 0
+  | _ => 0
   end.
 
-(*
 Lemma ge_is_defmap:
   forall identifier fd rs,
     find_function ge (inr identifier) rs = Some fd ->
     (prog_defmap prog) ! identifier = Some (Gfun fd).
 Proof.
   intros until rs. intro FIND.
-  unfold Genv.globalenv in *.
-  unfold prog_defs in *.
- *)
+  rewrite Genv.find_def_symbol.
+  unfold find_function in *.
+  destruct (Genv.find_symbol _ _) as [block' | ] in *.
+  2: discriminate.
+  exists block'.
+  constructor; trivial.
+  rewrite <- Genv.find_funct_ptr_iff.
+  exact FIND.
+Qed.
 
 Theorem simulation:
   forall S1 t S2,
@@ -212,7 +226,7 @@ Proof.
     apply sig_preserved.
   constructor. assumption.
   }
-  destruct ((prog_defmap prog) ! identifier) as [ fn_def |] in *.
+  destruct ((prog_defmap prog) ! identifier) as [ fn_def |] eqn:DEF in *.
   2: {
   left; econstructor; split.
   eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
@@ -220,7 +234,7 @@ Proof.
     apply sig_preserved.
   constructor. assumption.
   }
-  destruct fn_def as [fn_def0 | ] in *.
+  destruct fn_def as [fn_def0 | ] eqn:DEF0 in *.
   2: {
   left; econstructor; split.
   eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
@@ -228,7 +242,7 @@ Proof.
     apply sig_preserved.
   constructor. assumption.
   }
-  destruct fn_def0 as [int_f | ext_f] in *.
+  destruct fn_def0 as [int_f | ext_f] eqn:INTEXT in *.
   2: {
   left; econstructor; split.
   eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
@@ -252,10 +266,29 @@ Proof.
     apply sig_preserved.
   constructor. assumption.
   }
+  subst int_f.
   right.
-  simpl.
-  replace ((fn_code f) ! pc).
-  admit.
+  erewrite ge_is_defmap in DEF by eassumption.
+  assert (fd = Internal f) as FD by congruence.
+  clear DEF.
+  assert ((is_goto_tailcall f pc)=true) as GOTOTAIL.
+  {
+    simpl.
+    unfold is_goto_tailcall.
+    replace ((fn_code f) ! pc).
+    erewrite ge_is_defmap by eassumption.
+    rewrite FD.
+    rewrite ESAME.
+    reflexivity.
+  }
+  split.
+  { unfold measure.
+    rewrite GOTOTAIL.
+    omega.
+  }
+  split; trivial.
+  rewrite FD.
+  apply match_goto_callstates; auto.
   
 (* builtin *)
 - exploit transf_function_at; eauto. intros TR; inv TR.
