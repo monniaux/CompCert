@@ -145,6 +145,16 @@ Definition measure (s: state) : nat :=
   | _ => 1
   end.
 
+(*
+Lemma ge_is_defmap:
+  forall identifier fd rs,
+    find_function ge (inr identifier) rs = Some fd ->
+    (prog_defmap prog) ! identifier = Some (Gfun fd).
+Proof.
+  intros until rs. intro FIND.
+  unfold Genv.globalenv in *.
+  unfold prog_defs in *.
+ *)
 
 Theorem simulation:
   forall S1 t S2,
@@ -226,7 +236,7 @@ Proof.
     apply sig_preserved.
   constructor. assumption.
   }
-  destruct (_ int_f f) as [ SAME | NOT_SAME ].
+  destruct (function_eq int_f f) as [ SAME | NOT_SAME ] eqn:ESAME.
   2: {
   left; econstructor; split.
   eapply plus_one. eapply exec_Itailcall with (fd := transf_fundef (prog_defmap prog) fd); eauto.
@@ -242,8 +252,11 @@ Proof.
     apply sig_preserved.
   constructor. assumption.
   }
+  right.
+  simpl.
+  replace ((fn_code f) ! pc).
   admit.
-     
+  
 (* builtin *)
 - exploit transf_function_at; eauto. intros TR; inv TR.
   left; econstructor; split.
