@@ -1,9 +1,16 @@
 Require Import Coqlib Maps AST Registers Op RTL Conventions Integers Values Floats.
 
-Require Inlining.
+Definition funenv := PTree.t function.
 
-Definition funenv := Inlining.funenv.
-Definition funenv_program : program -> funenv := Inlining.funenv_program.
+Definition add_globdef (fenv: funenv) (idg: ident * globdef fundef unit) : funenv :=
+  match idg with
+  | (id, Gfun (Internal f)) => PTree.set id f fenv
+  | (id, _) =>
+      PTree.remove id fenv
+  end.
+
+Definition funenv_program (p : program) : funenv :=
+  List.fold_left add_globdef p.(prog_defs) (PTree.empty function).
 
 Definition reg_ident_eq (a b : reg+ident) :  { a=b} + {a <> b}.
 Proof.
@@ -104,4 +111,4 @@ Definition transf_fundef (fenv : funenv) (fd: fundef) : fundef :=
   AST.transf_fundef (transf_function fenv) fd.
 
 Definition transf_program (p: program): program :=
-  AST.transform_program (transf_fundef (Inlining.funenv_program p)) p.
+  AST.transform_program (transf_fundef (funenv_program p)) p.

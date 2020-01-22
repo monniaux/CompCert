@@ -122,22 +122,23 @@ Definition transf_rtl_program (f: RTL.program) : res Asm.program :=
    OK f
    @@ print (print_RTL 0)
    @@ total_if Compopts.optim_tailcalls (time "Tail calls" Tailcall.transf_program)
-   @@ total_if Compopts.optim_tailcalls (time "Tail calls to goto" TailcallGoto.transf_program)
    @@ print (print_RTL 1)
-  @@@ time "Inlining" Inlining.transf_program
+   @@ total_if Compopts.optim_tailcalls (time "Tail calls to goto" TailcallGoto.transf_program)
    @@ print (print_RTL 2)
-   @@ time "Renumbering" Renumber.transf_program
+  @@@ time "Inlining" Inlining.transf_program
    @@ print (print_RTL 3)
-   @@ total_if Compopts.optim_constprop (time "Constant propagation" Constprop.transf_program)
+   @@ time "Renumbering" Renumber.transf_program
    @@ print (print_RTL 4)
-   @@ total_if Compopts.optim_constprop (time "Renumbering" Renumber.transf_program)
+   @@ total_if Compopts.optim_constprop (time "Constant propagation" Constprop.transf_program)
    @@ print (print_RTL 5)
-  @@@ partial_if Compopts.optim_CSE (time "CSE" CSE.transf_program)
+   @@ total_if Compopts.optim_constprop (time "Renumbering" Renumber.transf_program)
    @@ print (print_RTL 6)
-  @@@ partial_if Compopts.optim_redundancy (time "Redundancy elimination" Deadcode.transf_program)
+  @@@ partial_if Compopts.optim_CSE (time "CSE" CSE.transf_program)
    @@ print (print_RTL 7)
-  @@@ time "Unused globals" Unusedglob.transform_program
+  @@@ partial_if Compopts.optim_redundancy (time "Redundancy elimination" Deadcode.transf_program)
    @@ print (print_RTL 8)
+  @@@ time "Unused globals" Unusedglob.transform_program
+   @@ print (print_RTL 9)
   @@@ time "Register allocation" Allocation.transf_program
    @@ print print_LTL
    @@ time "Branch tunneling" Tunneling.tunnel_program
