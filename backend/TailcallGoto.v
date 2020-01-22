@@ -1,6 +1,9 @@
 Require Import Coqlib Maps AST Registers Op RTL Conventions Integers Values Floats.
 
-Definition defmap_t := PTree.t (globdef fundef unit).
+Require Inlining.
+
+Definition funenv := Inlining.funenv.
+Definition funenv_program : program -> funenv := Inlining.funenv_program.
 
 Definition reg_ident_eq (a b : reg+ident) :  { a=b} + {a <> b}.
 Proof.
@@ -72,11 +75,11 @@ Proof.
   decide equality.
 Defined.
 
-Definition transf_instr (defmap : defmap_t) (cur_fn : function) (pc: node) (instr: instruction) :=
+Definition transf_instr (fenv : funenv) (cur_fn : function) (pc: node) (instr: instruction) :=
   match instr with
   | Itailcall sig (inr symb) args =>
-    match PTree.get symb defmap with
-    | Some (Gfun (Internal f)) =>
+    match PTree.get symb fenv with
+    | Some f =>
       if function_eq f cur_fn
       then
         match args with
@@ -89,17 +92,16 @@ Definition transf_instr (defmap : defmap_t) (cur_fn : function) (pc: node) (inst
   | _ => instr
   end.
 
-Definition transf_function (defmap : defmap_t) (f : function) : function :=
+Definition transf_function (fenv : funenv) (f : function) : function :=
     mkfunction
     f.(fn_sig)
     f.(fn_params)
     f.(fn_stacksize)
-    (PTree.map (transf_instr defmap f) f.(fn_code))
+    (PTree.map (transf_instr fenv f) f.(fn_code))
     f.(fn_entrypoint).
 
-Definition transf_fundef (defmap : defmap_t) (fd: fundef) : fundef :=
-  AST.transf_fundef (transf_function defmap) fd.
+Definition transf_fundef (fenv : funenv) (fd: fundef) : fundef :=
+  AST.transf_fundef (transf_function fenv) fd.
 
 Definition transf_program (p: program): program :=
-  AST.transform_program (transf_fundef (prog_defmap p)) p.
-
+  AST.transform_program (transf_fundef (Inlining.funenv_program p)) p.
