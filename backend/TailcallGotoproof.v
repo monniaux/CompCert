@@ -1,7 +1,70 @@
 Require Import Coqlib Maps Integers AST Linking.
 Require Import Values Memory Events Globalenvs Smallstep.
 Require Import Op Registers RTL Conventions TailcallGoto.
-Require Inliningspec Inliningproof.
+
+Definition fenv_compat (p: program) (fenv: funenv) : Prop :=
+  forall id f,
+  fenv!id = Some f -> (prog_defmap p)!id = Some (Gfun (Internal f)).
+
+Lemma funenv_program_compat:
+  forall p, fenv_compat p (funenv_program p).
+Proof.
+  set (P := fun (dm: PTree.t (globdef fundef unit)) (fenv: funenv) =>
+              forall id f,
+                fenv!id = Some f -> dm!id = Some (Gfun (Internal f))).
+  assert (ADD: forall dm fenv idg,
+             P dm fenv ->
+             P (PTree.set (fst idg) (snd idg) dm) (add_globdef fenv idg)).
+  { intros dm fenv [id g]; simpl; intros.
+    destruct g as [ [f|ef] | v].
+    {
+      red; intros. rewrite ! PTree.gsspec in *.
+      destruct (peq id0 id).
+      - inv H0. reflexivity.
+      - apply H. assumption.
+    }
+    { red; intros. rewrite ! PTree.grspec in *.
+      destruct (PTree.elt_eq id0 id).
+      - discriminate.
+      - rewrite PTree.gso by assumption.
+        apply H. assumption.
+    }
+    red; intros. rewrite ! PTree.grspec in *.
+    destruct (PTree.elt_eq id0 id).
+    - discriminate.
+    - rewrite PTree.gso by assumption.
+        apply H. assumption.
+  }
+
+  assert (REC: forall l dm fenv,
+            P dm fenv ->
+            P (fold_left (fun x idg => PTree.set (fst idg) (snd idg) x) l dm)
+              (fold_left add_globdef l fenv)).
+  {
+    induction l; simpl; intros; trivial.
+    apply IHl.
+    apply ADD.
+    assumption.
+  }
+  unfold fenv_compat.
+  intro prog.
+  change (P (prog_defmap prog) (funenv_program prog)).
+  apply REC.
+  unfold P.
+  intros.
+  rewrite PTree.gempty in *.
+  discriminate.
+Qed.
+
+
+Lemma fenv_compat_linkorder:
+  forall cunit prog fenv,
+  linkorder cunit prog -> fenv_compat cunit fenv -> fenv_compat prog fenv.
+Proof.
+  intros; red; intros. apply H0 in H1.
+  destruct (prog_defmap_linkorder _ _ _ _ H H1) as (gd' & P & Q).
+  inv Q. inv H3. auto.
+Qed.
 
 Definition match_prog (p tp: RTL.program) :=
   match_program (fun cunit f tf => tf = transf_fundef (funenv_program cunit) f) eq p tp.
@@ -95,7 +158,6 @@ Definition is_goto_tailcall (cur_fn : function) (pc : node) : bool :=
     | _ => false
     end.
 
-(*
 Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
   | match_frames_intro: forall res f sp pc rs,
       match_frames (Stackframe res f sp pc rs)
@@ -125,14 +187,28 @@ Lemma transf_initial_states:
   forall S1, RTL.initial_state prog S1 ->
   exists S2, RTL.initial_state tprog S2 /\ match_states S1 S2.
 Proof.
-  intros. inv H. econstructor; split.
-  econstructor.
-    eapply (Genv.init_mem_transf TRANSL); eauto.
-    rewrite symbols_preserved. rewrite (match_program_main TRANSL). eauto.
-    eapply function_ptr_translated; eauto.
-    rewrite <- H3; apply sig_preserved.
-  constructor. constructor.
-Qed.
+  intros. inv H.
+  destruct (function_ptr_translated b f H2) as [cu [f' [FOUND [FINAL ORDER]]]].
+  econstructor. split.
+  {
+    econstructor.
+    {
+      eapply (Genv.init_mem_match TRANSF); eauto.
+    }
+    {
+      rewrite symbols_preserved. rewrite (match_program_main TRANSF).
+      eassumption.
+    }
+    {
+      exact FOUND.
+    }
+    subst f'.
+    rewrite sig_function_translated.
+    assumption.
+  }
+  subst f'.
+  change ge0 with ge in *.
+Admitted.
 
 Lemma transf_final_states:
   forall S1 S2 r, match_states S1 S2 -> RTL.final_state S1 r -> RTL.final_state S2 r.
@@ -184,6 +260,7 @@ Proof.
   exact FIND.
 Qed.
 
+(*
 Theorem step_simulation:
   forall S1 t S2,
   step ge S1 t S2 ->
