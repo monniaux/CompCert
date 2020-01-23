@@ -63,8 +63,7 @@ Proof.
   generalize builtin_res_eq.
   generalize list_reg_eq.
   generalize external_function_eq.
-  decide equality.
-  decide equality.
+  repeat decide equality.
 Defined.
 
 Definition code_eq (a b : code) : {a = b} + { a <> b}.
