@@ -123,6 +123,7 @@ Proof.
   destruct f; simpl; trivial.
 Qed.
 
+(*
 Lemma transf_function_at:
   forall f pc i,
   f.(fn_code)!pc = Some i ->
@@ -415,6 +416,7 @@ Proof.
   eexact transf_final_states.
   eexact step_simulation.
 Qed.
+ *)
  *)
 
 Theorem transf_program_correct:

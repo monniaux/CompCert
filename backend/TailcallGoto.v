@@ -82,29 +82,37 @@ Proof.
   decide equality.
 Defined.
 
-Definition transf_instr (fenv : funenv) (cur_fn : function) (pc: node) (instr: instruction) :=
+Definition is_self_tailcall (fenv : funenv) (cur_fn : function) (instr : instruction) :=
   match instr with
   | Itailcall sig (inr symb) args =>
     match PTree.get symb fenv with
     | Some f =>
       if function_eq f cur_fn
-      then
-        match args with
-        | nil => Inop (fn_entrypoint cur_fn)
-        | _ => instr
-        end
-      else instr
-    | _ => instr
+      then Some args
+      else None
+    | _ => None
       end
-  | _ => instr
+  | _ => None
   end.
+
+Definition transf_instr (fenv : funenv) (cur_fn : function) (already : code)
+           (pc: node) (instr: instruction) : code :=
+  match is_self_tailcall fenv cur_fn instr with
+  | None | Some (_ :: _) =>
+           PTree.set pc instr already
+  | Some nil =>
+    PTree.set pc (Inop (fn_entrypoint cur_fn)) already
+  end.
+
+(* fold:
+    forall (A B: Type), (B -> elt -> A -> B) -> t A -> B -> B *)
 
 Definition transf_function (fenv : funenv) (f : function) : function :=
     mkfunction
     f.(fn_sig)
     f.(fn_params)
     f.(fn_stacksize)
-    (PTree.map (transf_instr fenv f) f.(fn_code))
+    (PTree.fold (transf_instr fenv f) (fn_code f) (PTree.empty instruction))
     f.(fn_entrypoint).
 
 Definition transf_fundef (fenv : funenv) (fd: fundef) : fundef :=
