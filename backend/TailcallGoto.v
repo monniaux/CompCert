@@ -1,4 +1,5 @@
 Require Import Coqlib Maps AST Registers Op RTL Conventions Integers Values Floats.
+Require Parmov.
 
 Definition funenv := PTree.t function.
 
@@ -100,25 +101,26 @@ Definition move (dst : reg) (src : reg) (next : node) : instruction :=
   then Inop next
   else Iop Omove (src :: nil) dst next.
 
-Definition transf_instr (fenv : funenv) (cur_fn : function)
-           (already : (code * reg))
-           (pc: node) (instr: instruction) : code*reg :=
-  match is_self_tailcall fenv cur_fn instr with
-  | None =>
-    ((PTree.set pc instr (fst already)),
+Definition generate_moves (pc : node) (moves : list (reg * reg))
+           (jump_point : node) (already : code*node) : code*node :=
+  match moves with
+  | (arg0, dst0) :: nil =>
+    ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 jump_point) (fst already)),
      (snd already))
+  | _ => ((PTree.set pc (Inop jump_point) (fst already)),
+          (snd already))
+  end.
+
+Definition transf_instr (fenv : funenv) (cur_fn : function)
+           (tmp : reg) (already : code*node)
+           (pc: node) (instr: instruction) : code*node :=
+  match is_self_tailcall fenv cur_fn instr with
+  | None => ((PTree.set pc instr (fst already)), (snd already))
   | Some args =>
-    match args, (fn_params cur_fn) with
-    | arg0 :: nil, dst0 :: _ =>
-      ((PTree.set pc (move dst0 arg0 (fn_entrypoint cur_fn)) (fst already)),
-       (snd already))
-    | nil, _ =>
-      ((PTree.set pc (Inop (fn_entrypoint cur_fn)) (fst already)),
-       (snd already))
-    | _, _ =>
-      ((PTree.set pc instr (fst already)),
-       (snd already))
-    end
+     generate_moves pc
+                   (Parmov.parmove reg Pos.eq_dec (fun _ => tmp)
+                                   (List.combine args (fn_params cur_fn)))
+                   (fn_entrypoint cur_fn) already
   end.
 
 (* fold:
@@ -129,8 +131,9 @@ Definition transf_function (fenv : funenv) (f : function) : function :=
     f.(fn_sig)
     f.(fn_params)
     f.(fn_stacksize)
-        (fst (PTree.fold (transf_instr fenv f) (fn_code f)
-                         ((PTree.empty instruction), (max_reg_function f))))
+        (fst (PTree.fold (transf_instr fenv f (Pos.succ (max_reg_function f))) (fn_code f)
+                         ((PTree.empty instruction),
+                          (Pos.succ (max_pc_function f)))))
     f.(fn_entrypoint).
 
 Definition transf_fundef (fenv : funenv) (fd: fundef) : fundef :=
