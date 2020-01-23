@@ -95,13 +95,25 @@ Definition is_self_tailcall (fenv : funenv) (cur_fn : function) (instr : instruc
   | _ => None
   end.
 
+Definition move (dst : reg) (src : reg) (next : node) : instruction :=
+  if Pos.eq_dec dst src
+  then Inop next
+  else Iop Omove (src :: nil) dst next.
+
 Definition transf_instr (fenv : funenv) (cur_fn : function) (already : code)
            (pc: node) (instr: instruction) : code :=
   match is_self_tailcall fenv cur_fn instr with
-  | None | Some (_ :: _) =>
+  | None =>
            PTree.set pc instr already
-  | Some nil =>
-    PTree.set pc (Inop (fn_entrypoint cur_fn)) already
+  | Some args =>
+    match args, (fn_params cur_fn) with
+    | arg0 :: nil, dst0 :: _ =>
+      PTree.set pc (move dst0 arg0 (fn_entrypoint cur_fn)) already
+    | nil, _ =>
+      PTree.set pc (Inop (fn_entrypoint cur_fn)) already
+    | _, _ =>
+      PTree.set pc instr already
+    end
   end.
 
 (* fold:
