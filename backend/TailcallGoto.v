@@ -103,28 +103,32 @@ Definition move (dst : reg) (src : reg) (next : node) : instruction :=
 
 Fixpoint generate_moves (pc : node) (moves : list (reg * reg))
            (jump_point : node) (already : code*node) : code*node :=
+  let (prevcode, nextnode) := already in 
   match moves with
-  | nil => ((PTree.set pc (Inop jump_point) (fst already)),
-            (snd already))
+  | nil => ((PTree.set pc (Inop jump_point) prevcode),
+            nextnode)
   | (arg0, dst0) :: nil =>
-    ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 jump_point) (fst already)),
-     (snd already))
+    ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 jump_point) prevcode),
+     nextnode)
   | (arg0, dst0) :: rest =>
     generate_moves (snd already) rest jump_point
-      ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 (snd already)) (fst already)),
-       (Pos.succ (snd already)))            
+      ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 (snd already)) prevcode),
+       (Pos.succ nextnode))            
   end.
 
 Definition transf_instr (fenv : funenv) (cur_fn : function)
-           (tmp : reg) (already : code*node)
-           (pc: node) (instr: instruction) : code*node :=
+           (tmpalready : reg*(code*node))
+           (pc: node) (instr: instruction) : reg*(code*node) :=
+  let (tmp, already) := tmpalready in
+  let (prevcode, nextnode) := already in 
   match is_self_tailcall fenv cur_fn instr with
-  | None => ((PTree.set pc instr (fst already)), (snd already))
+  | None => (tmp, ((PTree.set pc instr prevcode), nextnode))
   | Some args =>
-     generate_moves pc
-                   (Parmov.parmove reg Pos.eq_dec (fun _ => tmp)
-                                   (List.combine args (fn_params cur_fn)))
-                   (fn_entrypoint cur_fn) already
+     ((Pos.succ tmp),
+      generate_moves pc
+                     (Parmov.parmove reg Pos.eq_dec (fun _ => tmp)
+                                     (List.combine args (fn_params cur_fn)))
+                     (fn_entrypoint cur_fn) already)
   end.
 
 (* fold:
@@ -135,9 +139,10 @@ Definition transf_function (fenv : funenv) (f : function) : function :=
     f.(fn_sig)
     f.(fn_params)
     f.(fn_stacksize)
-        (fst (PTree.fold (transf_instr fenv f (Pos.succ (max_reg_function f))) (fn_code f)
-                         ((PTree.empty instruction),
-                          (Pos.succ (max_pc_function f)))))
+        (fst (snd (PTree.fold (transf_instr fenv f) (fn_code f)
+                         ((Pos.succ (max_reg_function f)),
+                          ((PTree.empty instruction),
+                           (Pos.succ (max_pc_function f)))))))
     f.(fn_entrypoint).
 
 Definition transf_fundef (fenv : funenv) (fd: fundef) : fundef :=
