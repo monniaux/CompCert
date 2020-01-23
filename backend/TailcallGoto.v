@@ -101,14 +101,18 @@ Definition move (dst : reg) (src : reg) (next : node) : instruction :=
   then Inop next
   else Iop Omove (src :: nil) dst next.
 
-Definition generate_moves (pc : node) (moves : list (reg * reg))
+Fixpoint generate_moves (pc : node) (moves : list (reg * reg))
            (jump_point : node) (already : code*node) : code*node :=
   match moves with
+  | nil => ((PTree.set pc (Inop jump_point) (fst already)),
+            (snd already))
   | (arg0, dst0) :: nil =>
     ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 jump_point) (fst already)),
      (snd already))
-  | _ => ((PTree.set pc (Inop jump_point) (fst already)),
-          (snd already))
+  | (arg0, dst0) :: rest =>
+    generate_moves (snd already) rest jump_point
+      ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 (snd already)) (fst already)),
+       (Pos.succ (snd already)))            
   end.
 
 Definition transf_instr (fenv : funenv) (cur_fn : function)
