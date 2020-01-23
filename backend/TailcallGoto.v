@@ -100,19 +100,24 @@ Definition move (dst : reg) (src : reg) (next : node) : instruction :=
   then Inop next
   else Iop Omove (src :: nil) dst next.
 
-Definition transf_instr (fenv : funenv) (cur_fn : function) (already : code)
-           (pc: node) (instr: instruction) : code :=
+Definition transf_instr (fenv : funenv) (cur_fn : function)
+           (already : (code * reg))
+           (pc: node) (instr: instruction) : code*reg :=
   match is_self_tailcall fenv cur_fn instr with
   | None =>
-           PTree.set pc instr already
+    ((PTree.set pc instr (fst already)),
+     (snd already))
   | Some args =>
     match args, (fn_params cur_fn) with
     | arg0 :: nil, dst0 :: _ =>
-      PTree.set pc (move dst0 arg0 (fn_entrypoint cur_fn)) already
+      ((PTree.set pc (move dst0 arg0 (fn_entrypoint cur_fn)) (fst already)),
+       (snd already))
     | nil, _ =>
-      PTree.set pc (Inop (fn_entrypoint cur_fn)) already
+      ((PTree.set pc (Inop (fn_entrypoint cur_fn)) (fst already)),
+       (snd already))
     | _, _ =>
-      PTree.set pc instr already
+      ((PTree.set pc instr (fst already)),
+       (snd already))
     end
   end.
 
@@ -124,7 +129,8 @@ Definition transf_function (fenv : funenv) (f : function) : function :=
     f.(fn_sig)
     f.(fn_params)
     f.(fn_stacksize)
-    (PTree.fold (transf_instr fenv f) (fn_code f) (PTree.empty instruction))
+        (fst (PTree.fold (transf_instr fenv f) (fn_code f)
+                         ((PTree.empty instruction), (max_reg_function f))))
     f.(fn_entrypoint).
 
 Definition transf_fundef (fenv : funenv) (fd: fundef) : fundef :=
