@@ -123,6 +123,134 @@ Proof.
   destruct f; simpl; trivial.
 Qed.
 
+Local Open Scope positive_scope.
+
+Definition max_pc_code (co : code) :=
+  PTree.fold (fun m pc i => Pos.max m pc) co 1.
+
+Definition max_pc_list (elts : list (node * instruction)) :=
+  fold_left (fun m pci => Pos.max m (fst pci)) elts 1.
+
+Lemma pos_max_1:
+  forall x, (Pos.max 1 x) = x.
+Proof.
+  intro.
+  apply Pos.max_r.
+  apply Pos.le_1_l.
+Qed.
+
+Lemma max_pc_list_sound1:
+  forall elts: list (node * instruction),
+    elts <> nil ->
+  exists ins : instruction,
+    In ((max_pc_list elts), ins) elts.
+Proof.
+Admitted.
+(*
+  unfold max_pc_list.
+  induction elts; simpl.
+  { congruence. }
+  intros.
+  destruct elts as [ | b rest].
+  { simpl.
+    exists (snd a).
+    unfold max_pc_list.
+    rewrite pos_max_1.
+    left.
+    destruct a; simpl; reflexivity.
+  }
+  generalize 1.
+  assert (b::rest <> nil) as HNIL by congruence.
+  destruct (IHelts HNIL) as [ins1 IN1].
+  
+  intro p.
+  simpl.
+  pose proof (Pos.leb_le (max_pc_list (b::rest)) (fst a)) as HLEB.
+  destruct (Pos.leb (max_pc_list (b::rest)) (fst a)).
+  { exists (snd a).
+    left.
+    unfold max_pc_list in *.
+    simpl.
+    change (max_pc_list (a :: b :: rest)) with
+    (Pos.max (fst a) (max_pc_list (b :: rest))).
+    left.
+   
+  
+  assert (b::rest <> nil) as HNIL by congruence.
+  destruct (IHelts HNIL) as [ins1 IN1].
+  simpl.
+    
+    replace (Pos.max 1 (fst a)) with (fst a) by omega.
+ *)
+
+(*
+Lemma max_pc_code_sound1:
+  forall co : code,
+  exists ins : instruction,
+    PTree.get (max_pc_code co) co = Some ins.
+Proof.
+  intros.
+  unfold max_pc_code.
+  rewrite PTree.fold_spec.
+  generalize (PTree.elements co).
+ *)
+
+(*
+Definition well_formed_codenode
+  (already : code) (next_node : node) :=
+  next_node = Pos.succ (max_pc_code already).
+
+Lemma generate_moves_wellformed1:
+  forall moves : list  (reg * reg),
+  forall pc : node,
+  forall jump_point : node,
+  forall already : code,
+  forall next_node : node,
+    let (already', next_node') := generate_moves pc moves jump_point (already, next_node) in
+    pc < next_node ->
+    well_formed_codenode already next_node ->
+    well_formed_codenode already' next_node'.
+Proof.
+  induction moves as [ | mh mt Hmt ]; simpl.
+  {
+    intros until next_node.
+    intros BOUNDED WFORMED.
+    unfold well_formed_codenode in *.
+    unfold max_pc_code in *.
+    rewrite PTree.fold_spec in *.
+   }
+    
+  (pc : node) (moves : list (reg * reg))
+           (jump_point : node) (already : code*node) : code*node :=
+ *)
+
+(*
+Definition well_formed_tmp (f : function)
+           (tmp : reg) (already : code) (nextnode : node) :=
+  tmp >  (max_reg_function f) /\
+  nextnode > (PTree.fold (fun m pc i => Pos.max m pc) already 1).
+
+Lemma transf_instr_preserves_well_formed:
+  forall fenv : funenv,
+  forall f : function,
+  forall tmp : reg,
+  forall already : code,
+  forall nextnode : node,
+  forall pc : node,
+  forall instr : instruction,
+    match transf_instr fenv f (tmp, (already, nextnode)) pc instr with
+      ( tmp', (already', nextnode')) =>
+      well_formed_tmp f tmp already nextnode ->
+      well_formed_tmp f tmp' already' nextnode'
+    end.
+Proof.
+  intros until instr.
+  simpl.
+  destruct (is_self_tailcall fenv f instr).
+  {
+  }
+ *)
+
 (*
 Lemma transf_function_at:
   forall f pc i,
