@@ -305,6 +305,12 @@ Definition oper1 (op: operation) (dst : reg) (args : list reg)
                                      | Move_case arg' => arg'
                                      | Other_case _ => arg
                                      end) args)) rel'.
+Definition oper (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  if List.in_dec peq dst args
+  then kill dst rel
+  else oper1 op dst args rel.
+
 Section SOUNDNESS.
   Parameter F V : Type.
   Parameter genv: Genv.t F V.
@@ -507,6 +513,27 @@ Proof.
   rewrite PTree.gso by congruence.
   rewrite Regmap.gso in KILL by congruence.
   exact KILL.
+Qed.
+
+Lemma oper_sound :
+  forall rel : RELATION.t,
+  forall op : operation,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall v,
+    sem_rel rel rs ->
+    eval_operation genv sp op (rs ## args) m = Some v ->
+    sem_rel (oper op dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL EVAL.
+  unfold oper.
+  destruct in_dec.
+  {
+    apply kill_sound; auto. 
+  }
+  apply oper1_sound; auto.
 Qed.
 
 (*
