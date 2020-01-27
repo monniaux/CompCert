@@ -297,6 +297,14 @@ Definition move (src dst : reg) (rel : RELATION.t) :=
                  | Other_case _ => SMove src
                  end) (kill dst rel).
 
+Definition oper1 (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  let rel' := kill dst rel in
+  PTree.set dst (SOp op (List.map (fun arg =>
+                                     match move_cases (rel' ! arg) with
+                                     | Move_case arg' => arg'
+                                     | Other_case _ => arg
+                                     end) args)) rel'.
 Section SOUNDNESS.
   Parameter F V : Type.
   Parameter genv: Genv.t F V.
@@ -413,7 +421,85 @@ Proof.
   rewrite Regmap.gso in KILL by congruence.
   exact KILL.
 Qed.
- 
+
+Lemma move_cases_neq:
+  forall dst rel a,
+    a <> dst ->
+    (match move_cases (kill dst rel) ! a with
+     | Move_case a' => a'
+     | Other_case _ => a
+     end) <> dst.
+Proof.
+  intros until a. intro NEQ.
+  unfold kill.
+  rewrite PTree.gfilter1.
+  rewrite PTree.gro by congruence.
+  destruct (rel ! a); simpl.
+  2: congruence.
+  destruct s.
+  { simpl.
+    destruct peq; simpl; congruence.
+  }
+  { simpl.
+    destruct negb; simpl; congruence.
+  }
+Qed.
+
+Lemma args_replace_dst :
+  forall rel,
+  forall args : list reg,
+  forall dst : reg,
+  forall rs : regset,
+  forall v,
+    (sem_rel rel rs) ->
+    not (In dst args) ->
+    (rs # dst <- v)
+    ## (map
+          (fun arg : positive =>
+           match move_cases (kill dst rel) ! arg with
+           | Move_case arg' => arg'
+           | Other_case _ => arg
+           end) args) = rs ## args.
+Proof.
+  induction args; simpl; trivial.
+  intros until v.
+  intros REL NOT_IN.
+  rewrite IHargs by auto.
+  f_equal.
+  pose proof (REL a) as RELa.
+  rewrite Regmap.gso by (apply move_cases_neq; auto).
+  unfold kill.
+  unfold sem_reg in RELa.
+  rewrite PTree.gfilter1.
+  rewrite PTree.gro by auto.
+  destruct (rel ! a); simpl; trivial.
+  destruct s; simpl in *; destruct negb; simpl; congruence.
+Qed.
+
+Lemma oper1_sound :
+  forall rel : RELATION.t,
+  forall op : operation,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall v,
+    sem_rel rel rs ->
+    not (In dst args) ->
+    eval_operation genv sp op (rs ## args) m = Some v ->
+    sem_rel (oper1 op dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL NOT_IN EVAL x.
+  pose proof (kill_sound rel dst rs v REL x) as KILL.
+  unfold oper1.
+  destruct (peq x dst).
+  {
+    subst x.
+    unfold sem_reg.
+    rewrite PTree.gss.
+    rewrite Regmap.gss.
+    simpl.
+    replace (
 (*
 Definition apply_instr instr x :=
   match instr with
