@@ -289,31 +289,19 @@ Proof.
   assumption.
 Qed.
 
-Inductive sym_cases : option sym_val -> Type :=
-| Move_case : forall src, (sym_cases (Some (SMove src)))
-| Other_case : forall osv, (sym_cases osv).
-
-Definition move_cases (osv : option sym_val) : (sym_cases osv).
-Proof.
-  destruct osv as [sv |].
-  { destruct sv; try apply Move_case; apply Other_case. }
-  apply Other_case.
-Defined.
+Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
+  match rel ! x with
+  | Some (SMove org) => org
+  | _ => x
+  end.
 
 Definition move (src dst : reg) (rel : RELATION.t) :=
-  PTree.set dst (match move_cases (PTree.get src rel) with
-                 | Move_case src' => SMove src'
-                 | Other_case _ => SMove src
-                 end) (kill_reg dst rel).
+  PTree.set dst (SMove (forward_move rel src)) (kill_reg dst rel).
 
 Definition oper1 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
   let rel' := kill_reg dst rel in
-  PTree.set dst (SOp op (List.map (fun arg =>
-                                     match move_cases (rel' ! arg) with
-                                     | Move_case arg' => arg'
-                                     | Other_case _ => arg
-                                     end) args)) rel'.
+  PTree.set dst (SOp op (List.map (forward_move rel') args)) rel'.
 
 Definition oper (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
@@ -425,9 +413,11 @@ Proof.
     rewrite PTree.gss.
     rewrite Regmap.gss.
     unfold sem_reg in RELsrc.
-    destruct move_cases; simpl.
+    simpl.
+    unfold forward_move.
+    destruct (rel ! src) as [ sv |]; simpl.
+    destruct sv; simpl in *.
     {
-      simpl in RELsrc.
       destruct (peq dst src0).
       {
         subst src0.
@@ -437,8 +427,7 @@ Proof.
       rewrite Regmap.gso by congruence.
       assumption.
     }
-    rewrite write_same.
-    reflexivity.
+    all: f_equal; apply write_same.
   }
   rewrite Regmap.gso by congruence.
   unfold sem_reg.
@@ -450,24 +439,21 @@ Qed.
 Lemma move_cases_neq:
   forall dst rel a,
     a <> dst ->
-    (match move_cases (kill_reg dst rel) ! a with
-     | Move_case a' => a'
-     | Other_case _ => a
-     end) <> dst.
+    (forward_move (kill_reg dst rel) a) <> dst.
 Proof.
   intros until a. intro NEQ.
-  unfold kill_reg.
+  unfold kill_reg, forward_move.
   rewrite PTree.gfilter1.
   rewrite PTree.gro by congruence.
   destruct (rel ! a); simpl.
   2: congruence.
   destruct s.
-  { simpl.
+  {
+    unfold kill_sym_val.
     destruct peq; simpl; congruence.
   }
-  { simpl.
+  all: simpl;
     destruct negb; simpl; congruence.
-  }
 Qed.
 
 Lemma args_replace_dst :
@@ -480,13 +466,10 @@ Lemma args_replace_dst :
     not (In dst args) ->
     (rs # dst <- v)
     ## (map
-          (fun arg : positive =>
-           match move_cases (kill_reg dst rel) ! arg with
-           | Move_case arg' => arg'
-           | Other_case _ => arg
-           end) args) = rs ## args.
+          (forward_move (kill_reg dst rel)) args) = rs ## args.
 Proof.
-  induction args; simpl; trivial.
+  induction args; simpl.
+  1: reflexivity.
   intros until v.
   intros REL NOT_IN.
   rewrite IHargs by auto.
@@ -495,6 +478,7 @@ Proof.
   rewrite Regmap.gso by (apply move_cases_neq; auto).
   unfold kill_reg.
   unfold sem_reg in RELa.
+  unfold forward_move.
   rewrite PTree.gfilter1.
   rewrite PTree.gro by auto.
   destruct (rel ! a); simpl; trivial.
@@ -554,7 +538,6 @@ Proof.
   }
   apply oper1_sound; auto.
 Qed.
-
 
 Lemma gen_oper_sound :
   forall rel : RELATION.t,
@@ -640,9 +623,9 @@ Definition forward_map (f : RTL.function) := DS.fixpoint
 
 (*
 Definition get_r (rel : RELATION.t) (x : reg) :=
-  match PTree.get x rel with
-  | None => x
-  | Some src => src
+  match move_cases (PTree.get x rel) with
+                 | Move_case x' => x'
+                 | Other_case _ => x
   end.
 
 Definition get_rb (rb : RB.t) (x : reg) :=
