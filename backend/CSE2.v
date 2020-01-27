@@ -254,7 +254,7 @@ Definition kill_sym_val (dst : reg) (sv : sym_val) :=
   | SOp op args => List.existsb (peq dst) args
   end.
                                                  
-Definition kill (dst : reg) (rel : RELATION.t) :=
+Definition kill_reg (dst : reg) (rel : RELATION.t) :=
   PTree.filter1 (fun x => negb (kill_sym_val dst x))
                 (PTree.remove dst rel).
 
@@ -295,11 +295,11 @@ Definition move (src dst : reg) (rel : RELATION.t) :=
   PTree.set dst (match move_cases (PTree.get src rel) with
                  | Move_case src' => SMove src'
                  | Other_case _ => SMove src
-                 end) (kill dst rel).
+                 end) (kill_reg dst rel).
 
 Definition oper1 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
-  let rel' := kill dst rel in
+  let rel' := kill_reg dst rel in
   PTree.set dst (SOp op (List.map (fun arg =>
                                      match move_cases (rel' ! arg) with
                                      | Move_case arg' => arg'
@@ -309,7 +309,7 @@ Definition oper1 (op: operation) (dst : reg) (args : list reg)
 Definition oper (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
   if List.in_dec peq dst args
-  then kill dst rel
+  then kill_reg dst rel
   else oper1 op dst args rel.
 
 Definition gen_oper (op: operation) (dst : reg) (args : list reg)
@@ -347,9 +347,9 @@ Lemma kill_sound :
   forall rs,
   forall v,
     sem_rel rel rs ->
-    sem_rel (kill dst rel) (rs # dst <- v).
+    sem_rel (kill_reg dst rel) (rs # dst <- v).
 Proof.
-  unfold sem_rel, kill, sem_reg, sem_sym_val.
+  unfold sem_rel, kill_reg, sem_reg, sem_sym_val.
   intros until v.
   intros REL x.
   rewrite PTree.gfilter1.
@@ -439,13 +439,13 @@ Qed.
 Lemma move_cases_neq:
   forall dst rel a,
     a <> dst ->
-    (match move_cases (kill dst rel) ! a with
+    (match move_cases (kill_reg dst rel) ! a with
      | Move_case a' => a'
      | Other_case _ => a
      end) <> dst.
 Proof.
   intros until a. intro NEQ.
-  unfold kill.
+  unfold kill_reg.
   rewrite PTree.gfilter1.
   rewrite PTree.gro by congruence.
   destruct (rel ! a); simpl.
@@ -470,7 +470,7 @@ Lemma args_replace_dst :
     (rs # dst <- v)
     ## (map
           (fun arg : positive =>
-           match move_cases (kill dst rel) ! arg with
+           match move_cases (kill_reg dst rel) ! arg with
            | Move_case arg' => arg'
            | Other_case _ => arg
            end) args) = rs ## args.
@@ -482,7 +482,7 @@ Proof.
   f_equal.
   pose proof (REL a) as RELa.
   rewrite Regmap.gso by (apply move_cases_neq; auto).
-  unfold kill.
+  unfold kill_reg.
   unfold sem_reg in RELa.
   rewrite PTree.gfilter1.
   rewrite PTree.gro by auto.
@@ -582,7 +582,7 @@ Definition apply_instr instr x :=
   | Iop Omove (src :: nil) dst _ => Some (move src dst x)
   | Iop _ _ dst _
   | Iload _ _ _ _ dst _
-  | Icall _ _ _ dst _ => Some (kill dst x)
+  | Icall _ _ _ dst _ => Some (kill_reg dst x)
   | Ibuiltin _ _ res _ => Some (RELATION.top) (* TODO (kill_builtin_res res x) *)
   | Itailcall _ _ _ | Ireturn _ => RB.bot
   end.
