@@ -610,30 +610,16 @@ Proof.
 Qed.
   
 End SOUNDNESS.
-
-Lemma gen_oper_sound :
-  forall m m' : mem,
-  forall sp,
-  forall rel : RELATION.t,
-    sem_rel rel rs ->
-    eval_operation genv sp op (rs ## args) m = Some v ->
-    sem_rel (gen_oper op dst args rel) (rs # dst <- v).
-
-
-Lemma kill_mem_sound:
-  forall m' : mem,
     
-  (*
-Definition apply_instr instr x :=
+Definition apply_instr instr (rel : RELATION.t) : RB.t :=
   match instr with
   | Inop _
   | Icond _ _ _ _
-  | Ijumptable _ _
-  | Istore _ _ _ _ _ => Some x
-  | Iop Omove (src :: nil) dst _ => Some (move src dst x)
-  | Iop _ _ dst _
-  | Iload _ _ _ _ dst _
-  | Icall _ _ _ dst _ => Some (kill_reg dst x)
+  | Ijumptable _ _ => Some rel
+  | Istore _ _ _ _ _ => Some (kill_mem rel)
+  | Iop op args dst _ => Some (gen_oper op dst args rel) 
+  | Iload _ _ _ dst _
+  | Icall _ _ _ dst _ => Some (kill_reg dst rel)
   | Ibuiltin _ _ res _ => Some (RELATION.top) (* TODO (kill_builtin_res res x) *)
   | Itailcall _ _ _ | Ireturn _ => RB.bot
   end.
@@ -652,6 +638,7 @@ Definition forward_map (f : RTL.function) := DS.fixpoint
   (RTL.fn_code f) RTL.successors_instr
   (apply_instr' (RTL.fn_code f)) (RTL.fn_entrypoint f) (Some RELATION.top).
 
+(*
 Definition get_r (rel : RELATION.t) (x : reg) :=
   match PTree.get x rel with
   | None => x
