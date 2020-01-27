@@ -258,6 +258,15 @@ Definition kill_reg (dst : reg) (rel : RELATION.t) :=
   PTree.filter1 (fun x => negb (kill_sym_val dst x))
                 (PTree.remove dst rel).
 
+Definition kill_sym_val_mem (sv: sym_val) :=
+  match sv with
+  | SMove _ => false
+  | SOp op _ => op_depends_on_memory op
+  end.
+
+Definition kill_mem (rel : RELATION.t) :=
+  PTree.filter1 (fun x => negb (kill_sym_val_mem x)) rel.
+
 Lemma args_unaffected:
   forall rs : regset,
   forall dst : reg,
@@ -320,10 +329,12 @@ Definition gen_oper (op: operation) (dst : reg) (args : list reg)
   end.
 
 Section SOUNDNESS.
-  Parameter F V : Type.
-  Parameter genv: Genv.t F V.
-  Parameter sp : val.
-  Parameter m : mem.
+  Variable F V : Type.
+  Variable genv: Genv.t F V.
+  Variable sp : val.
+
+Section SAME_MEMORY.
+  Variable m : mem.
 
 Definition sem_sym_val sym rs :=
   match sym with
@@ -341,7 +352,7 @@ Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) : option val :=
 Definition sem_rel (rel : RELATION.t) (rs : regset) :=
   forall x : reg, (sem_reg rel x rs) = Some (rs # x).
 
-Lemma kill_sound :
+Lemma kill_reg_sound :
   forall rel : RELATION.t,
   forall dst : reg,
   forall rs,
@@ -404,7 +415,7 @@ Lemma move_sound :
     sem_rel (move src dst rel) (rs # dst <- (rs # src)).
 Proof.
   intros until rs. intros REL x.
-  pose proof (kill_sound rel dst rs (rs # src) REL x) as KILL.
+  pose proof (kill_reg_sound rel dst rs (rs # src) REL x) as KILL.
   pose proof (REL src) as RELsrc.
   unfold move.
   destruct (peq x dst).
@@ -504,7 +515,7 @@ Lemma oper1_sound :
 Proof.
   intros until v.
   intros REL NOT_IN EVAL x.
-  pose proof (kill_sound rel dst rs v REL x) as KILL.
+  pose proof (kill_reg_sound rel dst rs v REL x) as KILL.
   unfold oper1.
   destruct (peq x dst).
   {
@@ -539,7 +550,7 @@ Proof.
   unfold oper.
   destruct in_dec.
   {
-    apply kill_sound; auto. 
+    apply kill_reg_sound; auto. 
   }
   apply oper1_sound; auto.
 Qed.
@@ -572,6 +583,46 @@ Proof.
   }
   all: apply oper_sound; auto.
 Qed.
+
+End SAME_MEMORY.
+
+Lemma kill_mem_sound :
+  forall m m' : mem,
+  forall rel : RELATION.t,
+  forall rs,
+    sem_rel m rel rs -> sem_rel m' (kill_mem rel) rs.
+Proof.
+  unfold sem_rel, sem_reg.
+  intros until rs.
+  intros SEM x.
+  pose proof (SEM x) as SEMx.
+  unfold kill_mem.
+  rewrite PTree.gfilter1.
+  unfold kill_sym_val_mem.
+  destruct (rel ! x) as [ sv | ].
+  2: reflexivity.
+  destruct sv; simpl in *; trivial.
+  {
+    destruct op_depends_on_memory eqn:DEPENDS; simpl; trivial.
+    rewrite <- SEMx.
+    apply op_depends_on_memory_correct; auto.
+  }
+Qed.
+  
+End SOUNDNESS.
+
+Lemma gen_oper_sound :
+  forall m m' : mem,
+  forall sp,
+  forall rel : RELATION.t,
+    sem_rel rel rs ->
+    eval_operation genv sp op (rs ## args) m = Some v ->
+    sem_rel (gen_oper op dst args rel) (rs # dst <- v).
+
+
+Lemma kill_mem_sound:
+  forall m' : mem,
+    
   (*
 Definition apply_instr instr x :=
   match instr with
