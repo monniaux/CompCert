@@ -305,11 +305,19 @@ Definition oper1 (op: operation) (dst : reg) (args : list reg)
                                      | Move_case arg' => arg'
                                      | Other_case _ => arg
                                      end) args)) rel'.
+
 Definition oper (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
   if List.in_dec peq dst args
   then kill dst rel
   else oper1 op dst args rel.
+
+Definition gen_oper (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  match op, args with
+  | Omove, src::nil => move src dst rel
+  | _, _ => oper op dst args rel
+  end.
 
 Section SOUNDNESS.
   Parameter F V : Type.
@@ -536,7 +544,35 @@ Proof.
   apply oper1_sound; auto.
 Qed.
 
-(*
+
+Lemma gen_oper_sound :
+  forall rel : RELATION.t,
+  forall op : operation,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall v,
+    sem_rel rel rs ->
+    eval_operation genv sp op (rs ## args) m = Some v ->
+    sem_rel (gen_oper op dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL EVAL.
+  unfold gen_oper.
+  destruct op.
+  { destruct args as [ | h0 t0].
+    apply oper_sound; auto.
+    destruct t0.
+    {
+      simpl in *.
+      replace v with (rs # h0) by congruence.
+      apply move_sound; auto.
+    }
+    apply oper_sound; auto.
+  }
+  all: apply oper_sound; auto.
+Qed.
+  (*
 Definition apply_instr instr x :=
   match instr with
   | Inop _
