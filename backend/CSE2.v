@@ -567,6 +567,115 @@ Proof.
   all: apply oper_sound; auto.
 Qed.
 
+
+Definition find_op_fold op args (already : option reg) x sv :=
+                match already with
+                | Some found => already
+                | None =>
+                  match sv with
+                  | (SOp op' args') =>
+                    if (eq_operation op op') && (eq_args args args')
+                    then Some x
+                    else None
+                  | _ => None
+                  end
+                end.
+
+Definition find_op (rel : RELATION.t) (op : operation) (args : list reg) :=
+  PTree.fold (find_op_fold op args) rel None.
+
+Fixpoint list_represents { X : Type } (l : list (positive*X)) (tr : PTree.t X) : Prop :=
+  match l with
+  | nil => True
+  | (r,sv)::tail => (tr ! r) = Some sv /\ list_represents tail tr
+  end.
+
+Lemma elements_represent :
+  forall { X : Type },
+  forall tr : (PTree.t X),
+    (list_represents (PTree.elements tr) tr).
+Proof.
+  intros.
+  generalize (PTree.elements_complete tr).
+  generalize (PTree.elements tr).
+  induction l; simpl; trivial.
+  intro COMPLETE.
+  destruct a as [ r sv ].
+  split.
+  {
+    apply COMPLETE.
+    left; reflexivity.
+  }
+  apply IHl; auto.
+Qed.
+
+Lemma find_op_sound :
+  forall rel : RELATION.t,
+  forall op : operation,
+  forall src dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+    sem_rel rel rs ->
+    find_op rel op args = Some src ->
+    (eval_operation genv sp op (rs ## args) m) = Some (rs # src).
+Proof.
+  intros until rs.
+  unfold find_op.
+  rewrite PTree.fold_spec.
+  intro REL.
+  assert (
+     forall start,
+             match start with
+             | None => True
+             | Some src => eval_operation genv sp op rs ## args m = Some rs # src
+             end -> fold_left
+    (fun (a : option reg) (p : positive * sym_val) =>
+     find_op_fold op args a (fst p) (snd p)) (PTree.elements rel) start =
+                    Some src ->
+             eval_operation genv sp op rs ## args m = Some rs # src) as REC.
+  {
+    unfold sem_rel, sem_reg in REL.
+    generalize (PTree.elements_complete rel).
+    generalize (PTree.elements rel).
+    induction l; simpl.
+    {
+      intros.
+      subst start.
+      assumption.
+    }
+    destruct a as [r sv]; simpl.
+    intros COMPLETE start GEN.
+    apply IHl.
+    {
+      intros.
+      apply COMPLETE.
+      right.
+      assumption.
+    }
+    unfold find_op_fold.
+    destruct start.
+    assumption.
+    destruct sv.
+    { trivial. }
+    destruct eq_operation; trivial.
+    subst op0.
+    destruct eq_args; trivial.
+    subst args0.
+    simpl.
+    assert ((rel ! r) = Some (SOp op args)) as RELatr.
+    {
+      apply COMPLETE.
+      left.
+      reflexivity.
+    }
+    pose proof (REL r) as RELr.
+    rewrite RELatr in RELr.
+    simpl in RELr.
+    assumption.
+  }
+  apply REC; auto.
+Qed.
+
 End SAME_MEMORY.
 
 Lemma kill_mem_sound :
@@ -634,7 +743,7 @@ Definition subst_arg (fmap : option (PMap.t RB.t)) (pc : node) (x : reg) : reg :
   end.
 
 Definition subst_args fmap pc := List.map (subst_arg fmap pc).
-
+    
 (* Transform *)
 Definition transf_instr (fmap : option (PMap.t RB.t))
            (pc: node) (instr: instruction) :=
