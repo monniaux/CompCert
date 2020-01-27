@@ -3,6 +3,8 @@ Require Import AST Linking.
 Require Import Memory Registers Op RTL Maps.
 
 Require Import Globalenvs Values.
+Require Import Linking Values Memory Globalenvs Events Smallstep.
+Require Import Registers Op RTL.
 
 (* Static analysis *)
 
@@ -798,3 +800,468 @@ Definition transf_fundef (fd: fundef) : fundef :=
 
 Definition transf_program (p: program) : program :=
   transform_program transf_fundef p.
+
+Definition match_prog (p tp: RTL.program) :=
+  match_program (fun ctx f tf => tf = transf_fundef f) eq p tp.
+
+Lemma transf_program_match:
+  forall p, match_prog p (transf_program p).
+Proof.
+  intros. eapply match_transform_program; eauto.
+Qed.
+
+Section PRESERVATION.
+
+Variables prog tprog: program.
+Hypothesis TRANSL: match_prog prog tprog.
+Let ge := Genv.globalenv prog.
+Let tge := Genv.globalenv tprog.
+
+Lemma functions_translated:
+  forall v f,
+  Genv.find_funct ge v = Some f ->
+  Genv.find_funct tge v = Some (transf_fundef f).
+Proof (Genv.find_funct_transf TRANSL).
+
+Lemma function_ptr_translated:
+  forall v f,
+  Genv.find_funct_ptr ge v = Some f ->
+  Genv.find_funct_ptr tge v = Some (transf_fundef f).
+Proof (Genv.find_funct_ptr_transf TRANSL).
+
+Lemma symbols_preserved:
+  forall id,
+  Genv.find_symbol tge id = Genv.find_symbol ge id.
+Proof (Genv.find_symbol_transf TRANSL).
+
+Lemma senv_preserved:
+  Senv.equiv ge tge.
+Proof (Genv.senv_transf TRANSL).
+
+Lemma sig_preserved:
+  forall f, funsig (transf_fundef f) = funsig f.
+Proof.
+  destruct f; trivial.
+Qed.
+
+Lemma find_function_translated:
+  forall ros rs fd,
+  find_function ge ros rs = Some fd ->
+  find_function tge ros rs = Some (transf_fundef fd).
+Proof.
+  unfold find_function; intros. destruct ros as [r|id].
+  eapply functions_translated; eauto.
+  rewrite symbols_preserved. destruct (Genv.find_symbol ge id); try congruence.
+  eapply function_ptr_translated; eauto.
+Qed.
+
+Lemma transf_function_at:
+  forall (f : function) (pc : node) (i : instruction),
+  (fn_code f)!pc = Some i ->
+  (fn_code (transf_function f))!pc =
+    Some(transf_instr (forward_map f) pc i).
+Proof.
+  intros until i. intro CODE.
+  unfold transf_function; simpl.
+  rewrite PTree.gmap.
+  unfold option_map.
+  rewrite CODE.
+  reflexivity.
+Qed.
+
+Definition sem_rel_b (relb : RB.t) sp m (rs : regset) :=
+  match relb with
+  | Some rel => sem_rel fundef unit ge sp m rel rs
+  | None => True
+  end.
+
+Definition fmap_sem (fmap : option (PMap.t RB.t))
+  sp m (pc : node) (rs : regset) :=
+  match fmap with
+  | None => True
+  | Some map => sem_rel_b (PMap.get pc map) sp m rs
+  end.
+
+(*
+Lemma step_simulation:
+  forall S1 t S2, RTL.step ge S1 t S2 ->
+  forall S1', match_states S1 S1' ->
+              exists S2', RTL.step tge S1' t S2' /\ match_states S2 S2'.
+Proof.
+  induction 1; intros S1' MS; inv MS; try TR_AT.
+- (* nop *)
+  econstructor; split. eapply exec_Inop; eauto.
+  constructor; auto.
+  
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
+  {
+    eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+    2: apply apply_instr'_bot.
+    simpl. tauto.
+  }
+  unfold apply_instr'.
+  unfold get_rb_sem in *.
+  destruct (map # pc) in *; try contradiction.
+  rewrite H.
+  reflexivity.
+- (* op *)
+  econstructor; split.
+  eapply exec_Iop with (v := v); eauto.
+  rewrite <- H0.
+  rewrite subst_args_ok by assumption.
+  apply eval_operation_preserved. exact symbols_preserved.
+  constructor; auto.
+
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  assert (RB.ge (map # pc') (apply_instr' (fn_code f) pc (map # pc))) as GE.
+  {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+  }
+  unfold apply_instr' in GE.
+  rewrite MPC in GE.
+  rewrite H in GE.
+  
+  destruct (op_cases op args res pc' mpc) as [[src [OP [ARGS MOVE]]] | KILL].
+  {
+    subst op.
+    subst args.
+    rewrite MOVE in GE.
+    simpl in H0.
+    simpl in GE.
+    apply get_rb_sem_ge with (rb2 := Some (move src res mpc)).
+    assumption.
+    replace v with (rs # src) by congruence.
+    apply move_ok.
+    assumption.
+  }
+  rewrite KILL in GE.
+  apply get_rb_sem_ge with (rb2 := Some (kill res mpc)).
+  assumption.
+  apply kill_ok.
+  assumption.
+  
+(* load *)
+- econstructor; split.
+  assert (eval_addressing tge sp addr rs ## args = Some a).
+  rewrite <- H0.
+  apply eval_addressing_preserved. exact symbols_preserved.
+  eapply exec_Iload; eauto.
+  rewrite subst_args_ok; assumption.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  apply get_rb_sem_ge with (rb2 := Some (kill dst mpc)).
+  {
+    replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+    {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+    }
+    unfold apply_instr'.
+    rewrite H.
+    rewrite MPC.
+    reflexivity.
+  }
+  apply kill_ok.
+  assumption.
+  
+- (* load notrap1 *)
+  econstructor; split.
+  assert (eval_addressing tge sp addr rs ## args = None).
+  rewrite <- H0. apply eval_addressing_preserved. exact symbols_preserved.
+  eapply exec_Iload_notrap1; eauto.
+  rewrite subst_args_ok; assumption.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  apply get_rb_sem_ge with (rb2 := Some (kill dst mpc)).
+  {
+    replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+    {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+    }
+    unfold apply_instr'.
+    rewrite H.
+    rewrite MPC.
+    reflexivity.
+  }
+  apply kill_ok.
+  assumption.
+  
+- (* load notrap2 *)
+  econstructor; split.
+  assert (eval_addressing tge sp addr rs ## args = Some a).
+  rewrite <- H0. apply eval_addressing_preserved. exact symbols_preserved.
+  eapply exec_Iload_notrap2; eauto.
+  rewrite subst_args_ok; assumption.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  apply get_rb_sem_ge with (rb2 := Some (kill dst mpc)).
+  {
+    replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+    {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+    }
+    unfold apply_instr'.
+    rewrite H.
+    rewrite MPC.
+    reflexivity.
+  }
+  apply kill_ok.
+  assumption.
+  
+- (* store *)
+  econstructor; split.
+  assert (eval_addressing tge sp addr rs ## args = Some a).
+  rewrite <- H0. apply eval_addressing_preserved. exact symbols_preserved.
+  eapply exec_Istore; eauto.
+  rewrite subst_args_ok; assumption.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
+  {
+    eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+    2: apply apply_instr'_bot.
+    simpl. tauto.
+  }
+  unfold apply_instr'.
+  unfold get_rb_sem in *.
+  destruct (map # pc) in *; try contradiction.
+  rewrite H.
+  reflexivity.
+  
+(* call *)
+- econstructor; split.
+  eapply exec_Icall with (fd := transf_fundef fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  rewrite subst_args_ok by assumption.
+  constructor. constructor; auto. constructor.
+
+  {
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  apply get_rb_sem_ge with (rb2 := Some (kill res mpc)).
+  {
+    replace (Some (kill res mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+    {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+    }
+    unfold apply_instr'.
+    rewrite H.
+    rewrite MPC.
+    reflexivity.
+  }
+  apply kill_weaken.
+  assumption.
+  }
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  assert (RB.ge (map # pc') (apply_instr' (fn_code f) pc (map # pc))) as GE.
+  {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+  }
+  unfold apply_instr' in GE.
+  unfold fmap_sem in *.
+  destruct (map # pc) as [mpc |] in *; try contradiction.
+  rewrite H in GE.
+  simpl in GE.
+  unfold is_killed_in_fmap, is_killed_in_map.
+  unfold RB.ge in GE.
+  destruct (map # pc') as [mpc'|] eqn:MPC' in *; trivial.
+  eauto.
+  
+(* tailcall *)
+- econstructor; split.
+  eapply exec_Itailcall with (fd := transf_fundef fd); eauto.
+    eapply find_function_translated; eauto.
+    apply sig_preserved.
+  rewrite subst_args_ok by assumption.
+  constructor. auto.
+  
+(* builtin *)
+- econstructor; split.
+  eapply exec_Ibuiltin; eauto.
+    eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
+    eapply external_call_symbols_preserved; eauto. apply senv_preserved.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  
+  apply get_rb_sem_ge with (rb2 := Some RELATION.top).
+  {
+    replace (Some RELATION.top) with (apply_instr' (fn_code f) pc (map # pc)).
+    {
+      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+      2: apply apply_instr'_bot.
+      simpl. tauto.
+    }
+    unfold apply_instr'.
+    rewrite H.
+    rewrite MPC.
+    reflexivity.
+  }
+  apply top_ok.
+  
+(* cond *)
+- econstructor; split.
+  eapply exec_Icond; eauto.
+  rewrite subst_args_ok; eassumption.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
+  {
+    eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+    2: apply apply_instr'_bot.
+    simpl.
+    destruct b; tauto.
+  }
+  unfold apply_instr'.
+  unfold get_rb_sem in *.
+  destruct (map # pc) in *; try contradiction.
+  rewrite H.
+  reflexivity.
+  
+(* jumptbl *)
+- econstructor; split.
+  eapply exec_Ijumptable; eauto.
+  rewrite subst_arg_ok; eassumption.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
+  {
+    eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+    2: apply apply_instr'_bot.
+    simpl.
+    apply list_nth_z_in with (n := Int.unsigned n).
+    assumption.
+  }
+  unfold apply_instr'.
+  unfold get_rb_sem in *.
+  destruct (map # pc) in *; try contradiction.
+  rewrite H.
+  reflexivity.
+  
+(* return *)
+- destruct or as [arg | ].
+  {
+    econstructor; split.
+    eapply exec_Ireturn; eauto.
+    unfold regmap_optget.
+    rewrite subst_arg_ok by eassumption.
+    constructor; auto.
+  }
+    econstructor; split.
+    eapply exec_Ireturn; eauto.
+    constructor; auto.
+  
+  
+(* internal function *)
+-  simpl. econstructor; split.
+  eapply exec_function_internal; eauto.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  apply get_rb_sem_ge with (rb2 := Some RELATION.top).
+  {
+    eapply DS.fixpoint_entry with (code := fn_code f) (successors := successors_instr); try eassumption.
+  }
+  apply top_ok.
+  
+(* external function *)
+- econstructor; split.
+  eapply exec_function_external; eauto.
+    eapply external_call_symbols_preserved; eauto. apply senv_preserved.
+    constructor; auto.
+
+(* return *)
+- inv STACKS. inv H1.
+  econstructor; split.
+  eapply exec_return; eauto.
+  constructor; auto.
+
+  simpl in *.
+  unfold fmap_sem in *.
+  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+  unfold is_killed_in_fmap in H8.
+  unfold is_killed_in_map in H8.
+  destruct (map # pc) as [mpc |] in *; try contradiction.
+  destruct H8 as [rel' RGE].
+  eapply get_rb_killed; eauto.
+Qed.
+
+
+Lemma transf_initial_states:
+  forall S1, RTL.initial_state prog S1 ->
+  exists S2, RTL.initial_state tprog S2 /\ match_states S1 S2.
+Proof.
+  intros. inv H. econstructor; split.
+  econstructor.
+    eapply (Genv.init_mem_transf TRANSL); eauto.
+    rewrite symbols_preserved. rewrite (match_program_main TRANSL). eauto.
+    eapply function_ptr_translated; eauto.
+    rewrite <- H3; apply sig_preserved.
+  constructor. constructor.
+Qed.
+
+Lemma transf_final_states:
+  forall S1 S2 r, match_states S1 S2 -> RTL.final_state S1 r -> RTL.final_state S2 r.
+Proof.
+  intros. inv H0. inv H. inv STACKS. constructor.
+Qed.
+
+Theorem transf_program_correct:
+  forward_simulation (RTL.semantics prog) (RTL.semantics tprog).
+Proof.
+  eapply forward_simulation_step.
+  apply senv_preserved.
+  eexact transf_initial_states.
+  eexact transf_final_states.
+  exact step_simulation.
+Qed.
+*)
