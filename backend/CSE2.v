@@ -499,7 +499,16 @@ Proof.
     rewrite PTree.gss.
     rewrite Regmap.gss.
     simpl.
-    replace (
+    rewrite args_replace_dst by auto.
+    assumption.
+  }
+  rewrite Regmap.gso by congruence.
+  unfold sem_reg.
+  rewrite PTree.gso by congruence.
+  rewrite Regmap.gso in KILL by congruence.
+  exact KILL.
+Qed.
+
 (*
 Definition apply_instr instr x :=
   match instr with
