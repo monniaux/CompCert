@@ -621,23 +621,16 @@ Definition forward_map (f : RTL.function) := DS.fixpoint
   (RTL.fn_code f) RTL.successors_instr
   (apply_instr' (RTL.fn_code f)) (RTL.fn_entrypoint f) (Some RELATION.top).
 
-(*
-Definition get_r (rel : RELATION.t) (x : reg) :=
-  match move_cases (PTree.get x rel) with
-                 | Move_case x' => x'
-                 | Other_case _ => x
-  end.
-
-Definition get_rb (rb : RB.t) (x : reg) :=
+Definition forward_move_b (rb : RB.t) (x : reg) :=
   match rb with
   | None => x
-  | Some rel => get_r rel x
+  | Some rel => forward_move rel x
   end.
 
 Definition subst_arg (fmap : option (PMap.t RB.t)) (pc : node) (x : reg) : reg :=
   match fmap with
   | None => x
-  | Some inv => get_rb (PMap.get pc inv) x
+  | Some inv => forward_move_b (PMap.get pc inv) x
   end.
 
 Definition subst_args fmap pc := List.map (subst_arg fmap pc).
@@ -648,8 +641,8 @@ Definition transf_instr (fmap : option (PMap.t RB.t))
   match instr with
   | Iop op args dst s =>
     Iop op (subst_args fmap pc args) dst s
-  | Iload trap chunk addr args dst s =>
-    Iload trap chunk addr (subst_args fmap pc args) dst s
+  | Iload chunk addr args dst s =>
+    Iload chunk addr (subst_args fmap pc args) dst s
   | Istore chunk addr args src s =>
     Istore chunk addr (subst_args fmap pc args) src s
   | Icall sig ros args dst s =>
@@ -678,4 +671,3 @@ Definition transf_fundef (fd: fundef) : fundef :=
 
 Definition transf_program (p: program) : program :=
   transform_program transf_fundef p.
-*)
