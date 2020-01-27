@@ -279,19 +279,41 @@ Proof.
   apply IHargs.
   assumption.
 Qed.
-  
+
+Inductive sym_cases : option sym_val -> Type :=
+| Move_case : forall src, (sym_cases (Some (SMove src)))
+| Other_case : forall osv, (sym_cases osv).
+
+Definition move_cases (osv : option sym_val) : (sym_cases osv).
+Proof.
+  destruct osv as [sv |].
+  { destruct sv; try apply Move_case; apply Other_case. }
+  apply Other_case.
+Defined.
+
+Definition move (src dst : reg) (rel : RELATION.t) :=
+  PTree.set dst (match move_cases (PTree.get src rel) with
+                 | Move_case src' => SMove src'
+                 | Other_case _ => SMove src
+                 end) (kill dst rel).
+
 Section SOUNDNESS.
   Parameter F V : Type.
   Parameter genv: Genv.t F V.
   Parameter sp : val.
   Parameter m : mem.
-                
-Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) : option val :=
-  match PTree.get x rel with
-  | None => Some (rs # x)
-  | Some (SMove src) => Some (rs # src)
-  | Some (SOp op args) =>
+
+Definition sem_sym_val sym rs :=
+  match sym with
+  | SMove src => Some (rs # src)
+  | SOp op args =>
     eval_operation genv sp op (rs ## args) m
+  end.
+    
+Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) : option val :=
+  match rel ! x with
+  | None => Some (rs # x)
+  | Some sym => sem_sym_val sym rs
   end.
 
 Definition sem_rel (rel : RELATION.t) (rs : regset) :=
@@ -305,7 +327,7 @@ Lemma kill_sound :
     sem_rel rel rs ->
     sem_rel (kill dst rel) (rs # dst <- v).
 Proof.
-  unfold sem_rel, kill, sem_reg.
+  unfold sem_rel, kill, sem_reg, sem_sym_val.
   intros until v.
   intros REL x.
   rewrite PTree.gfilter1.
@@ -336,20 +358,63 @@ Proof.
     assumption.
   }
 Qed.
-  
-Definition move (src dst : reg) (rel : RELATION.t) :=
-  PTree.set dst (match PTree.get src rel with
-                 | Some (SMove src') => SMove src'
-                 | _ => SMove src
-                 end) (kill dst rel).
 
-Fixpoint kill_builtin_res (res : builtin_res reg) (rel : RELATION.t) :=
-  match res with
-  | BR z => kill z rel
-  | BR_none => rel
-  | BR_splitlong hi lo => kill_builtin_res hi (kill_builtin_res lo rel)
-  end.
+Lemma write_same:
+  forall rs : regset,
+  forall src dst : reg,
+    (rs # dst <- (rs # src)) # src = rs # src.
+Proof.
+  intros.
+  destruct (peq src dst).
+  {
+    subst dst.
+    apply Regmap.gss.
+  }
+  rewrite Regmap.gso by congruence.
+  reflexivity.
+Qed.
 
+Lemma move_sound :
+  forall rel : RELATION.t,
+  forall src dst : reg,
+  forall rs,
+    sem_rel rel rs ->
+    sem_rel (move src dst rel) (rs # dst <- (rs # src)).
+Proof.
+  intros until rs. intros REL x.
+  pose proof (kill_sound rel dst rs (rs # src) REL x) as KILL.
+  pose proof (REL src) as RELsrc.
+  unfold move.
+  destruct (peq x dst).
+  {
+    subst x.
+    unfold sem_reg.
+    rewrite PTree.gss.
+    rewrite Regmap.gss.
+    unfold sem_reg in RELsrc.
+    destruct move_cases; simpl.
+    {
+      simpl in RELsrc.
+      destruct (peq dst src0).
+      {
+        subst src0.
+        rewrite Regmap.gss.
+        reflexivity.
+      }
+      rewrite Regmap.gso by congruence.
+      assumption.
+    }
+    rewrite write_same.
+    reflexivity.
+  }
+  rewrite Regmap.gso by congruence.
+  unfold sem_reg.
+  rewrite PTree.gso by congruence.
+  rewrite Regmap.gso in KILL by congruence.
+  exact KILL.
+Qed.
+ 
+(*
 Definition apply_instr instr x :=
   match instr with
   | Inop _
@@ -434,3 +499,4 @@ Definition transf_fundef (fd: fundef) : fundef :=
 
 Definition transf_program (p: program) : program :=
   transform_program transf_fundef p.
+*)
