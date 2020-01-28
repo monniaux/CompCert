@@ -296,6 +296,24 @@ Definition find_op_fold op args (already : option reg) x sv :=
 Definition find_op (rel : RELATION.t) (op : operation) (args : list reg) :=
   PTree.fold (find_op_fold op args) rel None.
 
+Definition find_load_fold chunk addr args (already : option reg) x sv :=
+                match already with
+                | Some found => already
+                | None =>
+                  match sv with
+                  | (SLoad chunk' addr' args') =>
+                    if (chunk_eq chunk chunk') &&
+                       (eq_addressing addr addr') &&
+                       (eq_args args args')
+                    then Some x
+                    else None
+                  | _ => None
+                  end
+                end.
+
+Definition find_load (rel : RELATION.t) (chunk : memory_chunk) (addr : addressing) (args : list reg) :=
+  PTree.fold (find_load_fold chunk addr args) rel None.
+
 Definition oper2 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
   let rel' := kill_reg dst rel in
@@ -319,6 +337,24 @@ Definition gen_oper (op: operation) (dst : reg) (args : list reg)
   match op, args with
   | Omove, src::nil => move src dst rel
   | _, _ => oper op dst args rel
+  end.
+
+Definition load2 (chunk: memory_chunk) (addr : addressing)
+           (dst : reg) (args : list reg) (rel : RELATION.t) :=
+  let rel' := kill_reg dst rel in
+  PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) rel'.
+
+Definition load1 (chunk: memory_chunk) (addr : addressing)
+           (dst : reg) (args : list reg) (rel : RELATION.t) :=
+  if List.in_dec peq dst args
+  then kill_reg dst rel
+  else load2 chunk addr dst args rel.
+
+Definition load (chunk: memory_chunk) (addr : addressing)
+           (dst : reg) (args : list reg) (rel : RELATION.t) :=
+  match find_load rel chunk addr (List.map (forward_move rel) args) with
+  | Some r => move r dst rel
+  | None => load1 chunk addr dst args rel
   end.
 
 (* NO LONGER NEEDED
@@ -355,7 +391,7 @@ Definition apply_instr instr (rel : RELATION.t) : RB.t :=
   | Ijumptable _ _ => Some rel
   | Istore _ _ _ _ _ => Some (kill_mem rel)
   | Iop op args dst _ => Some (gen_oper op dst args rel)
-  | Iload _ _ _ dst _ => Some (kill_reg dst rel)
+  | Iload chunk addr args dst _ => Some (load chunk addr dst args rel)
   | Icall _ _ _ dst _ => Some (kill_reg dst (kill_mem rel))
   | Ibuiltin _ _ res _ => Some (RELATION.top) (* TODO (kill_builtin_res res x) *)
   | Itailcall _ _ _ | Ireturn _ => RB.bot
@@ -400,6 +436,16 @@ Definition find_op_in_fmap fmap pc op args :=
     end
   end.
 
+Definition find_load_in_fmap fmap pc chunk addr args :=
+  match fmap with
+  | None => None
+  | Some map =>
+    match PMap.get pc map with
+    | Some rel => find_load rel chunk addr args
+    | None => None
+    end
+  end.
+
 Definition transf_instr (fmap : option (PMap.t RB.t))
            (pc: node) (instr: instruction) :=
   match instr with
@@ -410,7 +456,11 @@ Definition transf_instr (fmap : option (PMap.t RB.t))
     | Some src => Iop Omove (src::nil) dst s
     end
   | Iload chunk addr args dst s =>
-    Iload chunk addr (subst_args fmap pc args) dst s
+    let args' := subst_args fmap pc args in
+    match find_load_in_fmap fmap pc chunk addr args' with
+    | None => Iload chunk addr args' dst s
+    | Some src => Iop Omove (src::nil) dst s
+    end
   | Istore chunk addr args src s =>
     Istore chunk addr (subst_args fmap pc args) src s
   | Icall sig ros args dst s =>

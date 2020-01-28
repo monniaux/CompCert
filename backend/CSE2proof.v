@@ -460,6 +460,24 @@ Proof.
   apply REC; auto.
 Qed.
 
+Lemma find_load_sound' :
+  forall rel : RELATION.t,
+  forall chunk : memory_chunk,
+  forall addr : addressing,
+  forall src : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall a,
+    sem_rel rel rs ->
+    find_load rel chunk addr args = Some src ->
+    eval_addressing genv sp addr rs##args = Some a ->
+    (Mem.loadv chunk m a) = Some (rs # src).
+Proof.
+  intros until a. intros REL LOAD ADDR.
+  pose proof (find_load_sound rel chunk addr src args rs REL LOAD) as Z.
+  destruct eval_addressing in *; congruence.
+Qed.
+
 Lemma forward_move_map:
   forall rel args rs,
     sem_rel rel rs ->
@@ -933,7 +951,49 @@ Proof.
   }
     
 (* load *)
-- econstructor; split.
+- unfold transf_instr in *.
+  destruct find_load_in_fmap eqn:FIND_LOAD.
+  {
+    unfold find_load_in_fmap, fmap_sem', fmap_sem in *.
+    destruct (forward_map f) as [map |] eqn:MAP.
+    2: discriminate.
+    change (@PMap.get (option RELATION.t) pc map) with (map # pc) in *. 
+    destruct (map # pc) as [mpc | ] eqn:MPC.
+    2: discriminate.
+    econstructor; split.
+    {
+      eapply exec_Iop with (v := v); eauto.
+      simpl.
+      rewrite <- subst_args_ok with (genv := ge) (f := f) (pc := pc) (sp := sp) (m := m) in H0.
+      {
+        rewrite find_load_sound' with (genv := ge) (sp := sp) (addr := addr) (args := subst_args (Some map) pc args) (rel := mpc) (src := r) (rs := rs) in H1; trivial.
+        rewrite MAP in H0.
+        assumption.
+      }
+      unfold fmap_sem. rewrite MAP. rewrite MPC. assumption.
+    }
+    constructor; eauto.
+    unfold fmap_sem', fmap_sem in *.
+    rewrite MAP.
+    apply sem_rel_b_ge with (rb2 := Some (load chunk addr dst args mpc)).
+    {
+      replace (Some (load chunk addr dst args mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+      {
+        eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+        2: apply apply_instr'_bot.
+        simpl. tauto.
+      }
+      unfold apply_instr'.
+      rewrite H.
+      rewrite MPC.
+      simpl.
+      reflexivity.
+    }
+    unfold sem_rel_b', sem_rel_b.
+    apply load_sound with (a := a); auto.
+  }
+  {  
+  econstructor; split.
   assert (eval_addressing tge sp addr rs ## args = Some a).
   rewrite <- H0.
   apply eval_addressing_preserved. exact symbols_preserved.
@@ -945,9 +1005,9 @@ Proof.
   unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply sem_rel_b_ge with (rb2 := Some (kill_reg dst mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (load chunk addr dst args mpc)).
   {
-    replace (Some (kill_reg dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+    replace (Some (load chunk addr dst args mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
     {
       eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
       2: apply apply_instr'_bot.
@@ -956,11 +1016,12 @@ Proof.
     unfold apply_instr'.
     rewrite H.
     rewrite MPC.
+    simpl.
     reflexivity.
   }
-  apply kill_reg_sound.
-  assumption.
-
+  apply load_sound with (a := a); assumption.
+  }
+  
   (* NOT IN THIS VERSION 
 - (* load notrap1 *)
   econstructor; split.
