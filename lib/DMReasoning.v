@@ -49,7 +49,7 @@ Section TREES.
   Definition forall_tree (tr : tree) :=
     forall_list (PTree.elements tr).
 
-  Theorem forall_set :
+  Theorem forall_tree_set :
     forall tr : tree,
     forall key : positive,
     forall val : X,
