@@ -573,9 +573,9 @@ Qed.
 
 Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
 | match_frames_intro: forall res f sp pc rs,
-    (forall m : mem, (fmap_sem' sp m (forward_map f) pc rs)) ->
-    (is_killed_in_fmap (forward_map f) pc res) ->
-      match_frames (Stackframe res f sp pc rs)
+    (forall m : mem,
+     forall vres, (fmap_sem' sp m (forward_map f) pc rs # res <- vres)) ->
+    match_frames (Stackframe res f sp pc rs)
                  (Stackframe res (transf_function f) sp pc rs).
 
 Inductive match_states: RTL.state -> RTL.state -> Prop :=
@@ -794,7 +794,7 @@ Proof.
 
   constructor.
   {
-    intro m'.
+    intros m' vres.
     unfold fmap_sem', fmap_sem in *.
     destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
     destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
@@ -811,29 +811,9 @@ Proof.
       rewrite MPC.
       reflexivity.
     }
-    apply kill_reg_weaken.
+    apply kill_reg_sound.
     apply (kill_mem_sound' sp m).
     assumption.
-  }
-  {
-  simpl in *.
-  unfold fmap_sem', fmap_sem in *.
-  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  assert (RB.ge (map # pc') (apply_instr' (fn_code f) pc (map # pc))) as GE.
-  {
-      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
-      2: apply apply_instr'_bot.
-      simpl. tauto.
-  }
-  unfold apply_instr' in GE.
-  rewrite H in GE.
-  simpl in GE.
-  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  unfold is_killed_in_fmap, is_killed_in_map.
-  destruct (map # pc') as [mpc' |] eqn:MPC' ; try contradiction.
-
-  exists (kill_mem mpc).
-  assumption.
   }
   
 (* tailcall *)
@@ -959,26 +939,7 @@ Proof.
   econstructor; split.
   eapply exec_return; eauto.
   constructor; auto.
-
-  simpl in *.
-  unfold fmap_sem', fmap_sem in *.
-  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  unfold is_killed_in_fmap in H8.
-  unfold is_killed_in_map in H8.
-  destruct (map # pc) as [mpc |] in *; simpl in *; auto.
-  destruct H8 as [rel' RGE].
-
-  (* WRONG *)
-  eapply sem_rel_ge. exact RGE.
-  apply kill_reg_sound.
-  assert (sem_rel fundef unit ge sp m (kill_reg res rel') rs # res <- vres).
-  {
-    
-    eapply sem_rel_ge. eassumption.
-  }
-  eapply kill_reg_sound.
-  eapply get_rb_killed; eauto.
-Qed.
+Admitted.
 
 
 Lemma transf_initial_states:
