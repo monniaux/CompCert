@@ -420,6 +420,30 @@ Proof.
   destruct (mpc ! x) as [sv | ]; trivial.
   destruct negb; trivial.
 Qed.
+
+Lemma top_ok:
+  forall rs, sem_rel RELATION.top rs.
+Proof.
+  unfold sem_rel, sem_reg, RELATION.top.
+  intros.
+  rewrite PTree.gempty.
+  reflexivity.
+Qed.
+
+Lemma sem_rel_ge:
+  forall r1 r2 : RELATION.t,
+    (RELATION.ge r1 r2) ->
+    forall rs : regset,
+      (sem_rel r2 rs) -> (sem_rel r1 rs).
+Proof.
+  intros r1 r2 GE rs RE x.
+  pose proof (RE x) as REx.
+  pose proof (GE x) as GEx.
+  unfold sem_reg in *.
+  destruct (r1 ! x) as [r1x | ] in *;
+    destruct (r2 ! x) as [r2x | ] in *;
+    congruence.
+Qed.
 End SAME_MEMORY.
 
 Lemma kill_mem_sound :
@@ -444,7 +468,7 @@ Proof.
     apply op_depends_on_memory_correct; auto.
   }
 Qed.
-  
+
 End SOUNDNESS.
 
 
@@ -521,6 +545,7 @@ Definition is_killed_in_fmap fmap pc res :=
 
 Definition sem_rel_b' := sem_rel_b fundef unit ge.
 Definition fmap_sem' := fmap_sem fundef unit ge.
+Definition subst_arg_ok' := subst_arg_ok fundef unit ge.
 Definition subst_args_ok' := subst_args_ok fundef unit ge.
 Definition kill_mem_sound' := kill_mem_sound fundef unit ge.
 
@@ -531,16 +556,11 @@ Lemma sem_rel_b_ge:
     forall rs : regset,
       (sem_rel_b' sp m rb2 rs) -> (sem_rel_b' sp m rb1 rs).
 Proof.
-  unfold sem_rel_b', sem_rel_b, sem_rel, sem_reg.
+  unfold sem_rel_b', sem_rel_b.
   destruct rb1 as [r1 | ];
     destruct rb2 as [r2 | ]; simpl;
       intros GE sp m rs RE; try contradiction.
-  intro x.
-  pose proof (RE x) as REx.
-  pose proof (GE x) as GEx.
-  destruct (r1 ! x) as [r1x | ] in *;
-    destruct (r2 ! x) as [r2x | ] in *;
-    congruence.
+  apply sem_rel_ge with (r2 := r2); assumption.
 Qed.
 
 Lemma apply_instr'_bot :
@@ -825,8 +845,6 @@ Proof.
   rewrite (subst_args_ok' (Vptr stk Ptrofs.zero) m) by assumption.
   constructor. auto.
 
-    (* TODO *)
-
 (* builtin *)
 - econstructor; split.
   eapply exec_Ibuiltin; eauto.
@@ -835,7 +853,7 @@ Proof.
   constructor; auto.
 
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
   
@@ -854,14 +872,15 @@ Proof.
   }
   apply top_ok.
   
+
 (* cond *)
 - econstructor; split.
   eapply exec_Icond; eauto.
-  rewrite subst_args_ok; eassumption.
+  rewrite (subst_args_ok' sp m); eassumption.
   constructor; auto.
 
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
@@ -876,15 +895,15 @@ Proof.
   destruct (map # pc) in *; try contradiction.
   rewrite H.
   reflexivity.
-  
+
 (* jumptbl *)
 - econstructor; split.
   eapply exec_Ijumptable; eauto.
-  rewrite subst_arg_ok; eassumption.
+  rewrite (subst_arg_ok' sp m); eassumption.
   constructor; auto.
 
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
@@ -907,7 +926,7 @@ Proof.
     econstructor; split.
     eapply exec_Ireturn; eauto.
     unfold regmap_optget.
-    rewrite subst_arg_ok by eassumption.
+    rewrite (subst_arg_ok' (Vptr stk Ptrofs.zero) m) by eassumption.
     constructor; auto.
   }
     econstructor; split.
@@ -921,7 +940,7 @@ Proof.
   constructor; auto.
 
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   apply sem_rel_b_ge with (rb2 := Some RELATION.top).
   {
@@ -942,12 +961,22 @@ Proof.
   constructor; auto.
 
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   unfold is_killed_in_fmap in H8.
   unfold is_killed_in_map in H8.
-  destruct (map # pc) as [mpc |] in *; try contradiction.
+  destruct (map # pc) as [mpc |] in *; simpl in *; auto.
   destruct H8 as [rel' RGE].
+
+  (* WRONG *)
+  eapply sem_rel_ge. exact RGE.
+  apply kill_reg_sound.
+  assert (sem_rel fundef unit ge sp m (kill_reg res rel') rs # res <- vres).
+  {
+    
+    eapply sem_rel_ge. eassumption.
+  }
+  eapply kill_reg_sound.
   eapply get_rb_killed; eauto.
 Qed.
 
