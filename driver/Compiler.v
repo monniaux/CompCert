@@ -289,26 +289,7 @@ Proof.
   set (p10 := total_if optim_constprop Constprop.transf_program p9) in *.
   set (p11 := total_if optim_constprop Renumber.transf_program p10) in *.
   destruct (partial_if optim_CSE CSE.transf_program p11) as [p12|e] eqn:P12; simpl in T; try discriminate.
-  set (p12bis := @total_if RTL.program optim_CSE2 CSE2.transf_program p12).
-  change (@eq (res Asm.program)
-        (apply_partial Mach.program Asm.program
-           (apply_partial Linear.program Mach.program
-              (apply_partial Linear.program Linear.program
-                 (apply_total Linear.program Linear.program
-                    (apply_partial LTL.program Linear.program
-                       (apply_total LTL.program LTL.program
-                          (apply_partial RTL.program LTL.program
-                             (apply_partial RTL.program RTL.program
-                                (@partial_if RTL.program optim_redundancy
-                                   Deadcode.transf_program
-                                   p12bis)
-                                Unusedglob.transform_program)
-                             Allocation.transf_program)
-                          Tunneling.tunnel_program) Linearize.transf_program)
-                    CleanupLabels.transf_program)
-                 (@partial_if Linear.program debug Debugvar.transf_program))
-              Stacking.transf_program) Asmgen.transf_program)
-        (@OK Asm.program tp)) in T.
+  set (p12bis := @total_if RTL.program optim_CSE2 CSE2.transf_program p12) in *.
   destruct (partial_if optim_redundancy Deadcode.transf_program p12bis) as [p13|e] eqn:P13; simpl in T; try discriminate.
   destruct (Unusedglob.transform_program p13) as [p14|e] eqn:P14; simpl in T; try discriminate.
   destruct (Allocation.transf_program p14) as [p15|e] eqn:P15; simpl in T; try discriminate.
