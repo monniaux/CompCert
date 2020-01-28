@@ -275,24 +275,6 @@ Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
 Definition move (src dst : reg) (rel : RELATION.t) :=
   PTree.set dst (SMove (forward_move rel src)) (kill_reg dst rel).
 
-Definition oper1 (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
-  let rel' := kill_reg dst rel in
-  PTree.set dst (SOp op (List.map (forward_move rel') args)) rel'.
-
-Definition oper (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
-  if List.in_dec peq dst args
-  then kill_reg dst rel
-  else oper1 op dst args rel.
-
-Definition gen_oper (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
-  match op, args with
-  | Omove, src::nil => move src dst rel
-  | _, _ => oper op dst args rel
-  end.
-
 Definition find_op_fold op args (already : option reg) x sv :=
                 match already with
                 | Some found => already
@@ -308,6 +290,31 @@ Definition find_op_fold op args (already : option reg) x sv :=
 
 Definition find_op (rel : RELATION.t) (op : operation) (args : list reg) :=
   PTree.fold (find_op_fold op args) rel None.
+
+Definition oper2 (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  let rel' := kill_reg dst rel in
+  PTree.set dst (SOp op (List.map (forward_move rel') args)) rel'.
+
+Definition oper1 (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  if List.in_dec peq dst args
+  then kill_reg dst rel
+  else oper2 op dst args rel.
+
+Definition oper (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  match find_op rel op args with
+  | Some r => move r dst rel
+  | None => oper1 op dst args rel
+  end.
+
+Definition gen_oper (op: operation) (dst : reg) (args : list reg)
+           (rel : RELATION.t) :=
+  match op, args with
+  | Omove, src::nil => move src dst rel
+  | _, _ => oper op dst args rel
+  end.
 
 (* NO LONGER NEEDED
 Fixpoint list_represents { X : Type } (l : list (positive*X)) (tr : PTree.t X) : Prop :=
@@ -392,8 +399,9 @@ Definition transf_instr (fmap : option (PMap.t RB.t))
            (pc: node) (instr: instruction) :=
   match instr with
   | Iop op args dst s =>
-    match find_op_in_fmap fmap pc op args with
-    | None => Iop op (subst_args fmap pc args) dst s
+    let args' := subst_args fmap pc args in
+    match find_op_in_fmap fmap pc op args' with
+    | None => Iop op args' dst s
     | Some src => Iop Omove (src::nil) dst s
     end
   | Iload chunk addr args dst s =>

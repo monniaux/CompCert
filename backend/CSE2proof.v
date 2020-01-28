@@ -249,7 +249,7 @@ Proof.
   destruct s; simpl in *; destruct negb; simpl; congruence.
 Qed.
 
-Lemma oper1_sound :
+Lemma oper2_sound :
   forall rel : RELATION.t,
   forall op : operation,
   forall dst : reg,
@@ -259,12 +259,12 @@ Lemma oper1_sound :
     sem_rel rel rs ->
     not (In dst args) ->
     eval_operation genv sp op (rs ## args) m = Some v ->
-    sem_rel (oper1 op dst args rel) (rs # dst <- v).
+    sem_rel (oper2 op dst args rel) (rs # dst <- v).
 Proof.
   intros until v.
   intros REL NOT_IN EVAL x.
   pose proof (kill_reg_sound rel dst rs v REL x) as KILL.
-  unfold oper1.
+  unfold oper2.
   destruct (peq x dst).
   {
     subst x.
@@ -282,7 +282,7 @@ Proof.
   exact KILL.
 Qed.
 
-Lemma oper_sound :
+Lemma oper1_sound :
   forall rel : RELATION.t,
   forall op : operation,
   forall dst : reg,
@@ -291,45 +291,18 @@ Lemma oper_sound :
   forall v,
     sem_rel rel rs ->
     eval_operation genv sp op (rs ## args) m = Some v ->
-    sem_rel (oper op dst args rel) (rs # dst <- v).
+    sem_rel (oper1 op dst args rel) (rs # dst <- v).
 Proof.
   intros until v.
   intros REL EVAL.
-  unfold oper.
+  unfold oper1.
   destruct in_dec.
   {
     apply kill_reg_sound; auto. 
   }
-  apply oper1_sound; auto.
+  apply oper2_sound; auto.
 Qed.
 
-Lemma gen_oper_sound :
-  forall rel : RELATION.t,
-  forall op : operation,
-  forall dst : reg,
-  forall args: list reg,
-  forall rs : regset,
-  forall v,
-    sem_rel rel rs ->
-    eval_operation genv sp op (rs ## args) m = Some v ->
-    sem_rel (gen_oper op dst args rel) (rs # dst <- v).
-Proof.
-  intros until v.
-  intros REL EVAL.
-  unfold gen_oper.
-  destruct op.
-  { destruct args as [ | h0 t0].
-    apply oper_sound; auto.
-    destruct t0.
-    {
-      simpl in *.
-      replace v with (rs # h0) by congruence.
-      apply move_sound; auto.
-    }
-    apply oper_sound; auto.
-  }
-  all: apply oper_sound; auto.
-Qed.
 
 
 Lemma find_op_sound :
@@ -399,6 +372,59 @@ Proof.
   apply REC; auto.
 Qed.
 
+Lemma oper_sound :
+  forall rel : RELATION.t,
+  forall op : operation,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall v,
+    sem_rel rel rs ->
+    eval_operation genv sp op (rs ## args) m = Some v ->
+    sem_rel (oper op dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL EVAL.
+  unfold oper.
+  destruct find_op eqn:FIND.
+  {
+    assert (eval_operation genv sp op rs ## args m = Some rs # r).
+    {
+      apply (find_op_sound rel); trivial.
+    }
+    replace v with (rs # r) by congruence.
+    apply move_sound; auto.
+  }
+  apply oper1_sound; trivial.
+Qed.
+
+Lemma gen_oper_sound :
+  forall rel : RELATION.t,
+  forall op : operation,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall v,
+    sem_rel rel rs ->
+    eval_operation genv sp op (rs ## args) m = Some v ->
+    sem_rel (gen_oper op dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL EVAL.
+  unfold gen_oper.
+  destruct op.
+  { destruct args as [ | h0 t0].
+    apply oper_sound; auto.
+    destruct t0.
+    {
+      simpl in *.
+      replace v with (rs # h0) by congruence.
+      apply move_sound; auto.
+    }
+    apply oper_sound; auto.
+  }
+  all: apply oper_sound; auto.
+Qed.
 
 Lemma kill_reg_weaken:
   forall res mpc rs,
@@ -645,8 +671,13 @@ Proof.
     {
       eapply exec_Iop with (v := v); eauto.
       simpl.
-      rewrite find_op_sound with (rel := mpc) (src := r) in H0 by assumption.
-      assumption.
+      rewrite <- subst_args_ok with (genv := ge) (f := f) (pc := pc) (sp := sp) (m := m) in H0.
+      {
+        rewrite MAP in H0.
+        rewrite find_op_sound with (rel := mpc) (src := r) in H0 by assumption.
+        assumption.
+      }
+      unfold fmap_sem. rewrite MAP. rewrite MPC. assumption.
     }
     constructor; eauto.
     unfold fmap_sem', fmap_sem in *.
