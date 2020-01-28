@@ -438,7 +438,7 @@ Qed.
 Definition sem_rel_b (relb : RB.t) sp m (rs : regset) :=
   match relb with
   | Some rel => sem_rel fundef unit ge sp m rel rs
-  | None => True
+  | None => False
   end.
 
 Definition fmap_sem (fmap : option (PMap.t RB.t))
@@ -448,7 +448,66 @@ Definition fmap_sem (fmap : option (PMap.t RB.t))
   | Some map => sem_rel_b (PMap.get pc map) sp m rs
   end.
 
-(*
+Definition is_killed_in_map (map : PMap.t RB.t) pc res :=
+  match PMap.get pc map with
+  | None => True
+  | Some rel => exists rel', RELATION.ge rel (kill_reg res rel')
+  end.
+
+Definition is_killed_in_fmap fmap pc res :=
+  match fmap with
+  | None => True
+  | Some map => is_killed_in_map map pc res
+  end.
+
+
+Lemma sem_rel_b_ge:
+  forall rb1 rb2 : RB.t,
+    (RB.ge rb1 rb2) ->
+    forall sp m,
+    forall rs : regset,
+      (sem_rel_b rb2 sp m rs) -> (sem_rel_b rb1 sp m rs).
+Proof.
+  unfold sem_rel_b, sem_rel, sem_reg.
+  destruct rb1 as [r1 | ];
+    destruct rb2 as [r2 | ]; simpl;
+      intros GE sp m rs RE; try contradiction.
+  intro x.
+  pose proof (RE x) as REx.
+  pose proof (GE x) as GEx.
+  destruct (r1 ! x) as [r1x | ] in *;
+    destruct (r2 ! x) as [r2x | ] in *;
+    congruence.
+Qed.
+
+Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
+| match_frames_intro: forall res f sp pc rs,
+    (forall m : mem, (fmap_sem (forward_map f) sp m pc rs)) ->
+    (is_killed_in_fmap (forward_map f) pc res) ->
+      match_frames (Stackframe res f sp pc rs)
+                 (Stackframe res (transf_function f) sp pc rs).
+
+Inductive match_states: RTL.state -> RTL.state -> Prop :=
+  | match_regular_states: forall stk f sp pc rs m stk'
+                                 (STACKS: list_forall2 match_frames stk stk'),
+      (fmap_sem (forward_map f) sp m pc rs) ->
+      match_states (State stk f sp pc rs m)
+                   (State stk' (transf_function f) sp pc rs m)
+  | match_callstates: forall stk f args m stk'
+        (STACKS: list_forall2 match_frames stk stk'),
+      match_states (Callstate stk f args m)
+                   (Callstate stk' (transf_fundef f) args m)
+  | match_returnstates: forall stk v m stk'
+        (STACKS: list_forall2 match_frames stk stk'),
+      match_states (Returnstate stk v m)
+                   (Returnstate stk' v m).
+  
+Ltac TR_AT :=
+  match goal with
+  | [ A: (fn_code _)!_ = Some _ |- _ ] =>
+        generalize (transf_function_at _ _ _ A); intros
+  end.
+
 Lemma step_simulation:
   forall S1 t S2, RTL.step ge S1 t S2 ->
   forall S1', match_states S1 S1' ->
@@ -462,7 +521,7 @@ Proof.
   simpl in *.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
   {
     eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
@@ -470,7 +529,7 @@ Proof.
     simpl. tauto.
   }
   unfold apply_instr'.
-  unfold get_rb_sem in *.
+  unfold sem_rel_b in *.
   destruct (map # pc) in *; try contradiction.
   rewrite H.
   reflexivity.
@@ -502,14 +561,14 @@ Proof.
     rewrite MOVE in GE.
     simpl in H0.
     simpl in GE.
-    apply get_rb_sem_ge with (rb2 := Some (move src res mpc)).
+    apply sem_rel_b_ge with (rb2 := Some (move src res mpc)).
     assumption.
     replace v with (rs # src) by congruence.
     apply move_ok.
     assumption.
   }
   rewrite KILL in GE.
-  apply get_rb_sem_ge with (rb2 := Some (kill res mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (kill res mpc)).
   assumption.
   apply kill_ok.
   assumption.
@@ -527,7 +586,7 @@ Proof.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply get_rb_sem_ge with (rb2 := Some (kill dst mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (kill dst mpc)).
   {
     replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
     {
@@ -555,7 +614,7 @@ Proof.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply get_rb_sem_ge with (rb2 := Some (kill dst mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (kill dst mpc)).
   {
     replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
     {
@@ -583,7 +642,7 @@ Proof.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply get_rb_sem_ge with (rb2 := Some (kill dst mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (kill dst mpc)).
   {
     replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
     {
@@ -610,7 +669,7 @@ Proof.
   simpl in *.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
   {
     eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
@@ -618,7 +677,7 @@ Proof.
     simpl. tauto.
   }
   unfold apply_instr'.
-  unfold get_rb_sem in *.
+  unfold sem_rel_b in *.
   destruct (map # pc) in *; try contradiction.
   rewrite H.
   reflexivity.
@@ -636,7 +695,7 @@ Proof.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply get_rb_sem_ge with (rb2 := Some (kill res mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (kill res mpc)).
   {
     replace (Some (kill res mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
     {
@@ -689,7 +748,7 @@ Proof.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
   
-  apply get_rb_sem_ge with (rb2 := Some RELATION.top).
+  apply sem_rel_b_ge with (rb2 := Some RELATION.top).
   {
     replace (Some RELATION.top) with (apply_instr' (fn_code f) pc (map # pc)).
     {
@@ -713,7 +772,7 @@ Proof.
   simpl in *.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
   {
     eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
@@ -722,7 +781,7 @@ Proof.
     destruct b; tauto.
   }
   unfold apply_instr'.
-  unfold get_rb_sem in *.
+  unfold sem_rel_b in *.
   destruct (map # pc) in *; try contradiction.
   rewrite H.
   reflexivity.
@@ -736,7 +795,7 @@ Proof.
   simpl in *.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  apply get_rb_sem_ge with (rb2 := map # pc); trivial.
+  apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
   {
     eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
@@ -746,7 +805,7 @@ Proof.
     assumption.
   }
   unfold apply_instr'.
-  unfold get_rb_sem in *.
+  unfold sem_rel_b in *.
   destruct (map # pc) in *; try contradiction.
   rewrite H.
   reflexivity.
@@ -773,7 +832,7 @@ Proof.
   simpl in *.
   unfold fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  apply get_rb_sem_ge with (rb2 := Some RELATION.top).
+  apply sem_rel_b_ge with (rb2 := Some RELATION.top).
   {
     eapply DS.fixpoint_entry with (code := fn_code f) (successors := successors_instr); try eassumption.
   }
