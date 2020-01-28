@@ -530,6 +530,102 @@ Proof.
   all: apply oper_sound; auto.
 Qed.
 
+
+Lemma load2_sound :
+  forall rel : RELATION.t,
+  forall chunk : memory_chunk,
+  forall addr : addressing,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall a,
+  forall v,
+    sem_rel rel rs ->
+    not (In dst args) ->
+    eval_addressing genv sp addr (rs ## args) = Some a ->
+    Mem.loadv chunk m a = Some v ->
+    sem_rel (load2 chunk addr dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL NOT_IN ADDR LOAD x.
+  pose proof (kill_reg_sound rel dst rs v REL x) as KILL.
+  unfold load2.
+  destruct (peq x dst).
+  {
+    subst x.
+    unfold sem_reg.
+    rewrite PTree.gss.
+    rewrite Regmap.gss.
+    simpl.
+    rewrite args_replace_dst by auto.
+    destruct eval_addressing; congruence.
+  }
+  rewrite Regmap.gso by congruence.
+  unfold sem_reg.
+  rewrite PTree.gso by congruence.
+  rewrite Regmap.gso in KILL by congruence.
+  exact KILL.
+Qed.
+
+Lemma load1_sound :
+  forall rel : RELATION.t,
+  forall chunk : memory_chunk,
+  forall addr : addressing,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall a,
+  forall v,
+    sem_rel rel rs ->
+    eval_addressing genv sp addr (rs ## args) = Some a ->
+    Mem.loadv chunk m a = Some v ->
+    sem_rel (load1 chunk addr dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL ADDR LOAD.
+  unfold load1.
+  destruct in_dec.
+  {
+    apply kill_reg_sound; auto. 
+  }
+  apply load2_sound with (a := a); auto.
+Qed.
+
+Lemma load_sound :
+  forall rel : RELATION.t,
+  forall chunk : memory_chunk,
+  forall addr : addressing,
+  forall dst : reg,
+  forall args: list reg,
+  forall rs : regset,
+  forall a,
+  forall v,
+    sem_rel rel rs ->
+    eval_addressing genv sp addr (rs ## args) = Some a ->
+    Mem.loadv chunk m a = Some v ->
+    sem_rel (load chunk addr dst args rel) (rs # dst <- v).
+Proof.
+  intros until v.
+  intros REL ADDR LOAD.
+  unfold load.
+  destruct find_load eqn:FIND.
+  {
+    assert (match eval_addressing genv sp addr rs##(map (forward_move rel) args) with
+    | Some a => (Mem.loadv chunk m a) = Some (rs # r)
+    | None => True
+    end) as FIND_LOAD.
+    {
+      apply (find_load_sound rel); trivial.
+    }
+    rewrite forward_move_map in FIND_LOAD by assumption.
+    destruct eval_addressing in *.
+    2: discriminate.
+    replace v with (rs # r) by congruence.
+    apply move_sound; auto.
+  }
+  apply load1_sound with (a := a); trivial.
+Qed.
+
 Lemma kill_reg_weaken:
   forall res mpc rs,
     sem_rel mpc rs ->
