@@ -343,8 +343,8 @@ Definition apply_instr instr (rel : RELATION.t) : RB.t :=
   | Ijumptable _ _ => Some rel
   | Istore _ _ _ _ _ => Some (kill_mem rel)
   | Iop op args dst _ => Some (gen_oper op dst args rel)
-  | Iload _ _ _ dst _
-  | Icall _ _ _ dst _ => Some (kill_reg dst rel)
+  | Iload _ _ _ dst _ => Some (kill_reg dst rel)
+  | Icall _ _ _ dst _ => Some (kill_reg dst (kill_mem rel))
   | Ibuiltin _ _ res _ => Some (RELATION.top) (* TODO (kill_builtin_res res x) *)
   | Itailcall _ _ _ | Ireturn _ => RB.bot
   end.
@@ -377,11 +377,6 @@ Definition subst_arg (fmap : option (PMap.t RB.t)) (pc : node) (x : reg) : reg :
 
 Definition subst_args fmap pc := List.map (subst_arg fmap pc).
 
-Definition gen_move src dst s :=
-  if peq src dst
-  then Inop s
-  else Iop Omove (src::nil) dst s.
-
 (* Transform *)
 Definition find_op_in_fmap fmap pc op args :=
   match fmap with
@@ -399,7 +394,7 @@ Definition transf_instr (fmap : option (PMap.t RB.t))
   | Iop op args dst s =>
     match find_op_in_fmap fmap pc op args with
     | None => Iop op (subst_args fmap pc args) dst s
-    | Some src => gen_move src dst s
+    | Some src => Iop Omove (src::nil) dst s
     end
   | Iload chunk addr args dst s =>
     Iload chunk addr (subst_args fmap pc args) dst s

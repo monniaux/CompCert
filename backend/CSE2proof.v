@@ -335,7 +335,7 @@ Qed.
 Lemma find_op_sound :
   forall rel : RELATION.t,
   forall op : operation,
-  forall src dst : reg,
+  forall src : reg,
   forall args: list reg,
   forall rs : regset,
     sem_rel rel rs ->
@@ -625,47 +625,75 @@ Proof.
   rewrite H.
   reflexivity.
 - (* op *)
-  (*
-  econstructor; split.
-  eapply exec_Iop with (v := v); eauto.
-  rewrite <- H0.
-  rewrite subst_args_ok by assumption.
-  apply eval_operation_preserved. exact symbols_preserved.
-  constructor; auto.
+  unfold transf_instr in *.
+  destruct find_op_in_fmap eqn:FIND_OP.
+  {
+    unfold find_op_in_fmap, fmap_sem', fmap_sem in *.
+    destruct (forward_map f) as [map |] eqn:MAP.
+    2: discriminate.
+    change (@PMap.get (option RELATION.t) pc map) with (map # pc) in *. 
+    destruct (map # pc) as [mpc | ] eqn:MPC.
+    2: discriminate.
+    econstructor; split.
+    {
+      eapply exec_Iop with (v := v); eauto.
+      simpl.
+      rewrite find_op_sound with (rel := mpc) (src := r) in H0 by assumption.
+      assumption.
+    }
+    constructor; eauto.
+    unfold fmap_sem', fmap_sem in *.
+    rewrite MAP.
+    apply sem_rel_b_ge with (rb2 := Some (gen_oper op res args mpc)).
+    {
+      replace (Some (gen_oper op res args mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+      {
+        eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+        2: apply apply_instr'_bot.
+        simpl. tauto.
+      }
+      unfold apply_instr'.
+      rewrite H.
+      rewrite MPC.
+      reflexivity.
+    }
+    unfold sem_rel_b', sem_rel_b.
+    apply gen_oper_sound; auto.
+  }
+  {
+    econstructor; split.
+    {
+      eapply exec_Iop with (v := v); eauto.
+      rewrite (subst_args_ok' sp m) by assumption.
+      rewrite <- H0.
+      apply eval_operation_preserved. exact symbols_preserved.
+    }
+    constructor; eauto.
+    unfold fmap_sem', fmap_sem in *.
+    unfold find_op_in_fmap, fmap_sem', fmap_sem in *.
+    destruct (forward_map f) as [map |] eqn:MAP.
+    2: constructor.
+    change (@PMap.get (option RELATION.t) pc map) with (map # pc) in *. 
+    destruct (map # pc) as [mpc | ] eqn:MPC.
+    2: contradiction.
 
-  unfold fmap_sem in *.
-  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  assert (RB.ge (map # pc') (apply_instr' (fn_code f) pc (map # pc))) as GE.
-  {
-      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
-      2: apply apply_instr'_bot.
-      simpl. tauto.
+    apply sem_rel_b_ge with (rb2 := Some (gen_oper op res args mpc)).
+    {
+      replace (Some (gen_oper op res args mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+      {
+        eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+        2: apply apply_instr'_bot.
+        simpl. tauto.
+      }
+      unfold apply_instr'.
+      rewrite H.
+      rewrite MPC.
+      reflexivity.
+    }
+    unfold sem_rel_b', sem_rel_b.
+    apply gen_oper_sound; auto.
   }
-  unfold apply_instr' in GE.
-  rewrite MPC in GE.
-  rewrite H in GE.
-  
-  destruct (op_cases op args res pc' mpc) as [[src [OP [ARGS MOVE]]] | KILL].
-  {
-    subst op.
-    subst args.
-    rewrite MOVE in GE.
-    simpl in H0.
-    simpl in GE.
-    apply sem_rel_b_ge with (rb2 := Some (move src res mpc)).
-    assumption.
-    replace v with (rs # src) by congruence.
-    apply move_ok.
-    assumption.
-  }
-  rewrite KILL in GE.
-  apply sem_rel_b_ge with (rb2 := Some (kill res mpc)).
-  assumption.
-  apply kill_ok.
-  assumption.
-   *)
-  admit.
+    
 (* load *)
 - econstructor; split.
   assert (eval_addressing tge sp addr rs ## args = Some a).
@@ -970,6 +998,5 @@ Proof.
   eexact transf_final_states.
   exact step_simulation.
 Qed.
- *)
 
 End PRESERVATION.
