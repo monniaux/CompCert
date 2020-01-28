@@ -372,6 +372,21 @@ Proof.
   apply REC; auto.
 Qed.
 
+Lemma forward_move_map:
+  forall rel args rs,
+    sem_rel rel rs ->
+    rs ## (map (forward_move rel) args) = rs ## args.
+Proof.
+  induction args; simpl; trivial.
+  intros rs REL.
+  f_equal.
+  2: (apply IHargs; assumption).
+  unfold forward_move, sem_rel, sem_reg, sem_sym_val in *.
+  pose proof (REL a) as RELa.
+  destruct (rel ! a); trivial.
+  destruct s; congruence.
+Qed.
+
 Lemma oper_sound :
   forall rel : RELATION.t,
   forall op : operation,
@@ -388,10 +403,11 @@ Proof.
   unfold oper.
   destruct find_op eqn:FIND.
   {
-    assert (eval_operation genv sp op rs ## args m = Some rs # r).
+    assert (eval_operation genv sp op rs ## (map (forward_move rel) args) m = Some rs # r) as FIND_OP.
     {
       apply (find_op_sound rel); trivial.
     }
+    rewrite forward_move_map in FIND_OP by assumption.
     replace v with (rs # r) by congruence.
     apply move_sound; auto.
   }

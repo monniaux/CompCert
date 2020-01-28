@@ -304,7 +304,7 @@ Definition oper1 (op: operation) (dst : reg) (args : list reg)
 
 Definition oper (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
-  match find_op rel op args with
+  match find_op rel op (List.map (forward_move rel) args) with
   | Some r => move r dst rel
   | None => oper1 op dst args rel
   end.
