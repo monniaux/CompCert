@@ -73,4 +73,25 @@ Section TREES.
     apply PTree.elements_correct.
     assumption.
   Qed.
+
+  Theorem forall_tree_remove :
+    forall tr : tree,
+    forall key : positive,
+      (forall_tree tr) ->
+      (forall_tree (PTree.remove key tr)).
+  Proof.
+    unfold forall_tree, forall_list.
+    intros tr key ALL key' val' IN.
+    apply ALL.
+    apply PTree.elements_correct.
+    assert ((PTree.get key' (PTree.remove key tr)) = Some val') as GET.
+    { apply PTree.elements_complete.
+      assumption. }
+    destruct (PTree.elt_eq key key').
+    { subst key'.
+      rewrite PTree.grs in GET.
+      discriminate. }
+    rewrite PTree.gro in GET by congruence.
+    assumption.
+  Qed.
 End TREES.
