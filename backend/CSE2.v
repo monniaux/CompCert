@@ -6,8 +6,9 @@ Require Import Memory Registers Op RTL Maps.
 
 Inductive sym_val : Type :=
 | SMove (src : reg)
-| SOp (op : operation) (args : list reg).
-
+| SOp (op : operation) (args : list reg)
+| SLoad (chunk : memory_chunk) (addr : addressing) (args : list reg).
+                                                   
 Definition eq_args (x y : list reg) : { x = y } + { x <> y } :=
   list_eq_dec peq x y.
 
@@ -17,6 +18,8 @@ Proof.
   generalize eq_operation.
   generalize eq_args.
   generalize peq.
+  generalize eq_addressing.
+  generalize chunk_eq.
   decide equality.
 Defined.
 
@@ -250,6 +253,7 @@ Definition kill_sym_val (dst : reg) (sv : sym_val) :=
   match sv with
   | SMove src => if peq dst src then true else false
   | SOp op args => List.existsb (peq dst) args
+  | SLoad chunk addr args => List.existsb (peq dst) args
   end.
                                                  
 Definition kill_reg (dst : reg) (rel : RELATION.t) :=
@@ -260,6 +264,7 @@ Definition kill_sym_val_mem (sv: sym_val) :=
   match sv with
   | SMove _ => false
   | SOp op _ => op_depends_on_memory op
+  | SLoad _ _ _ => true
   end.
 
 Definition kill_mem (rel : RELATION.t) :=
