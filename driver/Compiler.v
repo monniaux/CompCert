@@ -40,6 +40,7 @@ Require Inlining.
 Require Renumber.
 Require Constprop.
 Require CSE.
+Require CSE2.
 Require Deadcode.
 Require Unusedglob.
 Require Allocation.
@@ -61,6 +62,7 @@ Require Inliningproof.
 Require Renumberproof.
 Require Constpropproof.
 Require CSEproof.
+Require CSE2proof.
 Require Deadcodeproof.
 Require Unusedglobproof.
 Require Allocproof.
@@ -132,10 +134,12 @@ Definition transf_rtl_program (f: RTL.program) : res Asm.program :=
    @@ print (print_RTL 5)
   @@@ partial_if Compopts.optim_CSE (time "CSE" CSE.transf_program)
    @@ print (print_RTL 6)
-  @@@ partial_if Compopts.optim_redundancy (time "Redundancy elimination" Deadcode.transf_program)
+   @@ total_if Compopts.optim_CSE2 (time "CSE2" CSE2.transf_program)
    @@ print (print_RTL 7)
-  @@@ time "Unused globals" Unusedglob.transform_program
+  @@@ partial_if Compopts.optim_redundancy (time "Redundancy elimination" Deadcode.transf_program)
    @@ print (print_RTL 8)
+  @@@ time "Unused globals" Unusedglob.transform_program
+   @@ print (print_RTL 9)
   @@@ time "Register allocation" Allocation.transf_program
    @@ print print_LTL
    @@ time "Branch tunneling" Tunneling.tunnel_program
@@ -241,6 +245,7 @@ Definition CompCert's_passes :=
   ::: mkpass (match_if Compopts.optim_constprop Constpropproof.match_prog)
   ::: mkpass (match_if Compopts.optim_constprop Renumberproof.match_prog)
   ::: mkpass (match_if Compopts.optim_CSE CSEproof.match_prog)
+  ::: mkpass (match_if Compopts.optim_CSE2 CSE2proof.match_prog)
   ::: mkpass (match_if Compopts.optim_redundancy Deadcodeproof.match_prog)
   ::: mkpass Unusedglobproof.match_prog
   ::: mkpass Allocproof.match_prog
@@ -284,7 +289,27 @@ Proof.
   set (p10 := total_if optim_constprop Constprop.transf_program p9) in *.
   set (p11 := total_if optim_constprop Renumber.transf_program p10) in *.
   destruct (partial_if optim_CSE CSE.transf_program p11) as [p12|e] eqn:P12; simpl in T; try discriminate.
-  destruct (partial_if optim_redundancy Deadcode.transf_program p12) as [p13|e] eqn:P13; simpl in T; try discriminate.
+  set (p12bis := @total_if RTL.program optim_CSE2 CSE2.transf_program p12).
+  change (@eq (res Asm.program)
+        (apply_partial Mach.program Asm.program
+           (apply_partial Linear.program Mach.program
+              (apply_partial Linear.program Linear.program
+                 (apply_total Linear.program Linear.program
+                    (apply_partial LTL.program Linear.program
+                       (apply_total LTL.program LTL.program
+                          (apply_partial RTL.program LTL.program
+                             (apply_partial RTL.program RTL.program
+                                (@partial_if RTL.program optim_redundancy
+                                   Deadcode.transf_program
+                                   p12bis)
+                                Unusedglob.transform_program)
+                             Allocation.transf_program)
+                          Tunneling.tunnel_program) Linearize.transf_program)
+                    CleanupLabels.transf_program)
+                 (@partial_if Linear.program debug Debugvar.transf_program))
+              Stacking.transf_program) Asmgen.transf_program)
+        (@OK Asm.program tp)) in T.
+  destruct (partial_if optim_redundancy Deadcode.transf_program p12bis) as [p13|e] eqn:P13; simpl in T; try discriminate.
   destruct (Unusedglob.transform_program p13) as [p14|e] eqn:P14; simpl in T; try discriminate.
   destruct (Allocation.transf_program p14) as [p15|e] eqn:P15; simpl in T; try discriminate.
   set (p16 := Tunneling.tunnel_program p15) in *.
@@ -305,6 +330,7 @@ Proof.
   exists p10; split. apply total_if_match. apply Constpropproof.transf_program_match.
   exists p11; split. apply total_if_match. apply Renumberproof.transf_program_match.
   exists p12; split. eapply partial_if_match; eauto. apply CSEproof.transf_program_match.
+  exists p12bis; split. apply total_if_match. apply CSE2proof.transf_program_match.
   exists p13; split. eapply partial_if_match; eauto. apply Deadcodeproof.transf_program_match.
   exists p14; split. apply Unusedglobproof.transf_program_match; auto.
   exists p15; split. apply Allocproof.transf_program_match; auto.
@@ -364,7 +390,7 @@ Ltac DestructM :=
       destruct H as (p & M & MM); clear H
   end.
   repeat DestructM. subst tp.
-  assert (F: forward_simulation (Cstrategy.semantics p) (Asm.semantics p21)).
+  assert (F: forward_simulation (Cstrategy.semantics p) (Asm.semantics p22)).
   {
   eapply compose_forward_simulations.
     eapply SimplExprproof.transl_program_correct; eassumption.
@@ -389,6 +415,8 @@ Ltac DestructM :=
     eapply match_if_simulation. eassumption. exact Renumberproof.transf_program_correct.
   eapply compose_forward_simulations.
     eapply match_if_simulation. eassumption. exact CSEproof.transf_program_correct.
+  eapply compose_forward_simulations.
+    eapply match_if_simulation. eassumption. exact CSE2proof.transf_program_correct.
   eapply compose_forward_simulations.
     eapply match_if_simulation. eassumption. exact Deadcodeproof.transf_program_correct; eassumption.
   eapply compose_forward_simulations.

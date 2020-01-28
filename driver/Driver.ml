@@ -194,6 +194,7 @@ Processing options:
   -ffloat-const-prop <n>  Control constant propagation of floats
                    (<n>=0: none, <n>=1: limited, <n>=2: full; default is full)
   -fcse          Perform common subexpression elimination [on]
+  -fcse2         Perform inter-loop common subexpression elimination [on]
   -fredundancy   Perform redundancy elimination [on]
   -finline       Perform inlining of functions [on]
   -finline-functions-called-once Integrate functions only required by their
@@ -253,8 +254,9 @@ let dump_mnemonics destfile =
   exit 0
 
 let optimization_options = [
-  option_ftailcalls; option_fifconversion; option_fconstprop; option_fcse;
-  option_fredundancy; option_finline; option_finline_functions_called_once;
+    option_ftailcalls; option_fifconversion; option_fconstprop;
+    option_fcse; option_fcse2;
+    option_fredundancy; option_finline; option_finline_functions_called_once;
 ]
 
 let set_all opts () = List.iter (fun r -> r := true) opts
@@ -372,6 +374,7 @@ let cmdline_actions =
   @ f_opt "if-conversion" option_fifconversion
   @ f_opt "const-prop" option_fconstprop
   @ f_opt "cse" option_fcse
+  @ f_opt "cse2" option_fcse2
   @ f_opt "redundancy" option_fredundancy
   @ f_opt "inline" option_finline
   @ f_opt "inline-functions-called-once" option_finline_functions_called_once

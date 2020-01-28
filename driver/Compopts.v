@@ -36,6 +36,9 @@ Parameter optim_constprop: unit -> bool.
 (** Flag -fcse.  For common subexpression elimination. *)
 Parameter optim_CSE: unit -> bool.
 
+(** Flag -fcse2.  For DMonniaux's common subexpression elimination. *)
+Parameter optim_CSE2: unit -> bool.
+
 (** Flag -fredundancy.  For dead code elimination. *)
 Parameter optim_redundancy: unit -> bool.
 

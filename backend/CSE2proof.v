@@ -405,7 +405,6 @@ Lemma kill_reg_weaken:
     sem_rel mpc rs ->
     sem_rel (kill_reg res mpc) rs.
 Proof.
-  Check kill_reg_sound.
   intros until rs.
   intros REL x.
   pose proof (REL x) as RELx.
@@ -471,6 +470,14 @@ Qed.
 
 End SOUNDNESS.
 
+Definition match_prog (p tp: RTL.program) :=
+  match_program (fun cu f tf => tf = transf_fundef f) eq p tp.
+
+Lemma transf_program_match:
+  forall p, match_prog p (transf_program p).
+Proof.
+  intros. apply match_transform_program; auto.
+Qed.
 
 Section PRESERVATION.
 
@@ -849,7 +856,6 @@ Proof.
   eapply exec_Itailcall with (fd := transf_fundef fd); eauto.
     eapply find_function_translated; eauto.
     apply sig_preserved.
-  Check subst_args_ok.
   rewrite (subst_args_ok' (Vptr stk Ptrofs.zero) m) by assumption.
   constructor. auto.
 

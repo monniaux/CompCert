@@ -26,6 +26,7 @@ let option_ffloatconstprop = ref 2
 let option_ftailcalls = ref true
 let option_fconstprop = ref true
 let option_fcse = ref true
+let option_fcse2 = ref true
 let option_fredundancy = ref true
 let option_fifconversion = ref true
 let option_Obranchless = ref false
