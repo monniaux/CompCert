@@ -42,6 +42,11 @@ Definition sem_sym_val sym rs :=
   | SMove src => Some (rs # src)
   | SOp op args =>
     eval_operation genv sp op (rs ## args) m
+  | SLoad chunk addr args =>
+    match eval_addressing genv sp addr rs##args with
+    | Some a => Mem.loadv chunk m a
+    | None   => None
+    end
   end.
     
 Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) : option val :=
@@ -135,6 +140,11 @@ Proof.
     destruct (peq dst src); simpl.
     { reflexivity. }
     rewrite Regmap.gso by congruence.
+    assumption.
+  }
+  { destruct existsb eqn:EXISTS; simpl.
+    { reflexivity. }
+    rewrite args_unaffected by exact EXISTS.
     assumption.
   }
   { destruct existsb eqn:EXISTS; simpl.
@@ -303,8 +313,6 @@ Proof.
   apply oper2_sound; auto.
 Qed.
 
-
-
 Lemma find_op_sound :
   forall rel : RELATION.t,
   forall op : operation,
@@ -351,8 +359,7 @@ Proof.
     unfold find_op_fold.
     destruct start.
     assumption.
-    destruct sv.
-    { trivial. }
+    destruct sv; trivial.
     destruct eq_operation; trivial.
     subst op0.
     destruct eq_args; trivial.
@@ -368,6 +375,87 @@ Proof.
     rewrite RELatr in RELr.
     simpl in RELr.
     assumption.
+  }
+  apply REC; auto.
+Qed.
+
+Lemma find_load_sound :
+  forall rel : RELATION.t,
+  forall chunk : memory_chunk,
+  forall addr : addressing,
+  forall src : reg,
+  forall args: list reg,
+  forall rs : regset,
+    sem_rel rel rs ->
+    find_load rel chunk addr args = Some src ->
+    match eval_addressing genv sp addr rs##args with
+    | Some a => (Mem.loadv chunk m a) = Some (rs # src)
+    | None => True
+    end.
+Proof.
+  intros until rs.
+  unfold find_load.
+  rewrite PTree.fold_spec.
+  intro REL.
+  assert (
+     forall start,
+             match start with
+             | None => True
+             | Some src =>
+               match eval_addressing genv sp addr rs##args with
+               | Some a => (Mem.loadv chunk m a) = Some (rs # src)
+               | None => True
+               end               
+             end ->
+    fold_left
+    (fun (a : option reg) (p : positive * sym_val) =>
+     find_load_fold chunk addr args a (fst p) (snd p)) (PTree.elements rel) start =
+    Some src ->
+    match eval_addressing genv sp addr rs##args with
+               | Some a => (Mem.loadv chunk m a) = Some (rs # src)
+               | None => True
+               end ) as REC.
+  
+  {
+    unfold sem_rel, sem_reg in REL.
+    generalize (PTree.elements_complete rel).
+    generalize (PTree.elements rel).
+    induction l; simpl.
+    {
+      intros.
+      subst start.
+      assumption.
+    }
+    destruct a as [r sv]; simpl.
+    intros COMPLETE start GEN.
+    apply IHl.
+    {
+      intros.
+      apply COMPLETE.
+      right.
+      assumption.
+    }
+    unfold find_load_fold.
+    destruct start.
+    assumption.
+    destruct sv; trivial.
+    destruct chunk_eq; trivial.
+    subst chunk0.
+    destruct eq_addressing; trivial.
+    subst addr0.
+    destruct eq_args; trivial.
+    subst args0.
+    simpl.
+    assert ((rel ! r) = Some (SLoad chunk addr args)) as RELatr.
+    {
+      apply COMPLETE.
+      left.
+      reflexivity.
+    }
+    pose proof (REL r) as RELr.
+    rewrite RELatr in RELr.
+    simpl in RELr.
+    destruct eval_addressing; trivial.
   }
   apply REC; auto.
 Qed.
