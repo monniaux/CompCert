@@ -53,6 +53,57 @@ Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) : option val :=
 Definition sem_rel (rel : RELATION.t) (rs : regset) :=
   forall x : reg, (sem_reg rel x rs) = Some (rs # x).
 
+Definition sem_rel_b (relb : RB.t) (rs : regset) :=
+  match relb with
+  | Some rel => sem_rel rel rs
+  | None => False
+  end.
+
+Definition fmap_sem (fmap : option (PMap.t RB.t))
+  (pc : node) (rs : regset) :=
+  match fmap with
+  | None => True
+  | Some m => sem_rel_b (PMap.get pc m) rs
+  end.
+
+Lemma subst_arg_ok:
+  forall f,
+  forall pc,
+  forall rs,
+  forall arg,
+    fmap_sem (forward_map f) pc rs ->
+    rs # (subst_arg (forward_map f) pc arg) = rs # arg.
+Proof.
+  intros until arg.
+  intro SEM.
+  unfold fmap_sem in SEM.
+  destruct (forward_map f) as [map |]in *; trivial.
+  simpl.
+  unfold sem_rel_b, sem_rel, sem_reg in *.
+  destruct (map # pc).
+  2: contradiction.
+  pose proof (SEM arg) as SEMarg.
+  simpl. unfold forward_move.
+  unfold sem_sym_val in *.
+  destruct (t ! arg); trivial.
+  destruct s; congruence.
+Qed.
+
+Lemma subst_args_ok:
+  forall f,
+  forall pc,
+  forall rs,
+  fmap_sem (forward_map f) pc rs ->
+  forall args,
+    rs ## (subst_args (forward_map f) pc args) = rs ## args.
+Proof.
+  induction args; trivial.
+  simpl.
+  f_equal.
+  apply subst_arg_ok; assumption.
+  assumption.
+Qed.
+
 Lemma kill_reg_sound :
   forall rel : RELATION.t,
   forall dst : reg,
@@ -348,6 +399,27 @@ Proof.
   apply REC; auto.
 Qed.
 
+
+Lemma kill_reg_weaken:
+  forall res mpc rs,
+    sem_rel mpc rs ->
+    sem_rel (kill_reg res mpc) rs.
+Proof.
+  Check kill_reg_sound.
+  intros until rs.
+  intros REL x.
+  pose proof (REL x) as RELx.
+  unfold kill_reg, sem_reg in *.
+  rewrite PTree.gfilter1.
+  destruct (peq res x).
+  { subst x.
+    rewrite PTree.grs.
+    reflexivity.
+  }
+  rewrite PTree.gro by congruence.
+  destruct (mpc ! x) as [sv | ]; trivial.
+  destruct negb; trivial.
+Qed.
 End SAME_MEMORY.
 
 Lemma kill_mem_sound :
@@ -435,19 +507,6 @@ Proof.
   reflexivity.
 Qed.
 
-Definition sem_rel_b (relb : RB.t) sp m (rs : regset) :=
-  match relb with
-  | Some rel => sem_rel fundef unit ge sp m rel rs
-  | None => False
-  end.
-
-Definition fmap_sem (fmap : option (PMap.t RB.t))
-  sp m (pc : node) (rs : regset) :=
-  match fmap with
-  | None => True
-  | Some map => sem_rel_b (PMap.get pc map) sp m rs
-  end.
-
 Definition is_killed_in_map (map : PMap.t RB.t) pc res :=
   match PMap.get pc map with
   | None => True
@@ -460,15 +519,19 @@ Definition is_killed_in_fmap fmap pc res :=
   | Some map => is_killed_in_map map pc res
   end.
 
+Definition sem_rel_b' := sem_rel_b fundef unit ge.
+Definition fmap_sem' := fmap_sem fundef unit ge.
+Definition subst_args_ok' := subst_args_ok fundef unit ge.
+Definition kill_mem_sound' := kill_mem_sound fundef unit ge.
 
 Lemma sem_rel_b_ge:
   forall rb1 rb2 : RB.t,
     (RB.ge rb1 rb2) ->
     forall sp m,
     forall rs : regset,
-      (sem_rel_b rb2 sp m rs) -> (sem_rel_b rb1 sp m rs).
+      (sem_rel_b' sp m rb2 rs) -> (sem_rel_b' sp m rb1 rs).
 Proof.
-  unfold sem_rel_b, sem_rel, sem_reg.
+  unfold sem_rel_b', sem_rel_b, sem_rel, sem_reg.
   destruct rb1 as [r1 | ];
     destruct rb2 as [r2 | ]; simpl;
       intros GE sp m rs RE; try contradiction.
@@ -480,9 +543,17 @@ Proof.
     congruence.
 Qed.
 
+Lemma apply_instr'_bot :
+  forall code,
+  forall pc,
+    RB.eq (apply_instr' code pc RB.bot) RB.bot.
+Proof.
+  reflexivity.
+Qed.
+
 Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
 | match_frames_intro: forall res f sp pc rs,
-    (forall m : mem, (fmap_sem (forward_map f) sp m pc rs)) ->
+    (forall m : mem, (fmap_sem' sp m (forward_map f) pc rs)) ->
     (is_killed_in_fmap (forward_map f) pc res) ->
       match_frames (Stackframe res f sp pc rs)
                  (Stackframe res (transf_function f) sp pc rs).
@@ -490,7 +561,7 @@ Inductive match_frames: RTL.stackframe -> RTL.stackframe -> Prop :=
 Inductive match_states: RTL.state -> RTL.state -> Prop :=
   | match_regular_states: forall stk f sp pc rs m stk'
                                  (STACKS: list_forall2 match_frames stk stk'),
-      (fmap_sem (forward_map f) sp m pc rs) ->
+      (fmap_sem' sp m (forward_map f) pc rs) ->
       match_states (State stk f sp pc rs m)
                    (State stk' (transf_function f) sp pc rs m)
   | match_callstates: forall stk f args m stk'
@@ -519,7 +590,7 @@ Proof.
   constructor; auto.
   
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   apply sem_rel_b_ge with (rb2 := map # pc); trivial.
   replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
@@ -534,6 +605,7 @@ Proof.
   rewrite H.
   reflexivity.
 - (* op *)
+  (*
   econstructor; split.
   eapply exec_Iop with (v := v); eauto.
   rewrite <- H0.
@@ -572,23 +644,24 @@ Proof.
   assumption.
   apply kill_ok.
   assumption.
-  
+   *)
+  admit.
 (* load *)
 - econstructor; split.
   assert (eval_addressing tge sp addr rs ## args = Some a).
   rewrite <- H0.
   apply eval_addressing_preserved. exact symbols_preserved.
   eapply exec_Iload; eauto.
-  rewrite subst_args_ok; assumption.
+  rewrite (subst_args_ok' sp m); assumption.
   constructor; auto.
 
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply sem_rel_b_ge with (rb2 := Some (kill dst mpc)).
+  apply sem_rel_b_ge with (rb2 := Some (kill_reg dst mpc)).
   {
-    replace (Some (kill dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+    replace (Some (kill_reg dst mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
     {
       eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
       2: apply apply_instr'_bot.
@@ -599,9 +672,10 @@ Proof.
     rewrite MPC.
     reflexivity.
   }
-  apply kill_ok.
+  apply kill_reg_sound.
   assumption.
-  
+
+  (* NOT IN THIS VERSION 
 - (* load notrap1 *)
   econstructor; split.
   assert (eval_addressing tge sp addr rs ## args = None).
@@ -657,20 +731,25 @@ Proof.
   }
   apply kill_ok.
   assumption.
+   *)
   
 - (* store *)
-  econstructor; split.
-  assert (eval_addressing tge sp addr rs ## args = Some a).
-  rewrite <- H0. apply eval_addressing_preserved. exact symbols_preserved.
-  eapply exec_Istore; eauto.
-  rewrite subst_args_ok; assumption.
+  econstructor. split.
+  {
+    assert (eval_addressing tge sp addr rs ## args = Some a).
+    rewrite <- H0. apply eval_addressing_preserved. exact symbols_preserved.
+    eapply exec_Istore; eauto.
+    rewrite (subst_args_ok' sp m); assumption.
+  }
+  
   constructor; auto.
-
   simpl in *.
-  unfold fmap_sem in *.
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  apply sem_rel_b_ge with (rb2 := map # pc); trivial.
-  replace (map # pc) with (apply_instr' (fn_code f) pc (map # pc)).
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+  apply sem_rel_b_ge with (rb2 := Some (kill_mem mpc)); trivial.
+  {
+  replace (Some (kill_mem mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
   {
     eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
     2: apply apply_instr'_bot.
@@ -678,39 +757,47 @@ Proof.
   }
   unfold apply_instr'.
   unfold sem_rel_b in *.
-  destruct (map # pc) in *; try contradiction.
+  rewrite MPC.
   rewrite H.
   reflexivity.
+  }
+  apply (kill_mem_sound' sp m).
+  assumption.
   
 (* call *)
 - econstructor; split.
   eapply exec_Icall with (fd := transf_fundef fd); eauto.
     eapply find_function_translated; eauto.
     apply sig_preserved.
-  rewrite subst_args_ok by assumption.
-  constructor. constructor; auto. constructor.
+  rewrite (subst_args_ok' sp m) by assumption.
+  constructor. constructor; auto.
 
+  constructor.
+  {
+    intro m'.
+    unfold fmap_sem', fmap_sem in *.
+    destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
+    destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
+    apply sem_rel_b_ge with (rb2 := Some (kill_reg res (kill_mem mpc))).
+    {
+      replace (Some (kill_reg res (kill_mem mpc))) with (apply_instr' (fn_code f) pc (map # pc)).
+      {
+        eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
+        2: apply apply_instr'_bot.
+        simpl. tauto.
+      }
+      unfold apply_instr'.
+      rewrite H.
+      rewrite MPC.
+      reflexivity.
+    }
+    apply kill_reg_weaken.
+    apply (kill_mem_sound' sp m).
+    assumption.
+  }
   {
   simpl in *.
-  unfold fmap_sem in *.
-  destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
-  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply sem_rel_b_ge with (rb2 := Some (kill res mpc)).
-  {
-    replace (Some (kill res mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
-    {
-      eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
-      2: apply apply_instr'_bot.
-      simpl. tauto.
-    }
-    unfold apply_instr'.
-    rewrite H.
-    rewrite MPC.
-    reflexivity.
-  }
-  apply kill_weaken.
-  assumption.
-  }
+  unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   assert (RB.ge (map # pc') (apply_instr' (fn_code f) pc (map # pc))) as GE.
   {
@@ -719,23 +806,27 @@ Proof.
       simpl. tauto.
   }
   unfold apply_instr' in GE.
-  unfold fmap_sem in *.
-  destruct (map # pc) as [mpc |] in *; try contradiction.
   rewrite H in GE.
   simpl in GE.
+  destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
   unfold is_killed_in_fmap, is_killed_in_map.
-  unfold RB.ge in GE.
-  destruct (map # pc') as [mpc'|] eqn:MPC' in *; trivial.
-  eauto.
+  destruct (map # pc') as [mpc' |] eqn:MPC' ; try contradiction.
+
+  exists (kill_mem mpc).
+  assumption.
+  }
   
 (* tailcall *)
 - econstructor; split.
   eapply exec_Itailcall with (fd := transf_fundef fd); eauto.
     eapply find_function_translated; eauto.
     apply sig_preserved.
-  rewrite subst_args_ok by assumption.
+  Check subst_args_ok.
+  rewrite (subst_args_ok' (Vptr stk Ptrofs.zero) m) by assumption.
   constructor. auto.
-  
+
+    (* TODO *)
+
 (* builtin *)
 - econstructor; split.
   eapply exec_Ibuiltin; eauto.
