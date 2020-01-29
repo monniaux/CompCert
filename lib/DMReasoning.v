@@ -4,6 +4,8 @@ Require Import List.
 
 Section TREES.
   Variable X : Type.
+
+  Section PROPERTY.
   Variable P : positive -> X -> Prop.
 
   Local Definition tree := PTree.t X.
@@ -114,4 +116,66 @@ Section TREES.
     apply ALL.
     assumption.
   Qed.
+
+  Definition exists_tree (tr : tree) :=
+    exists key : positive,
+    exists val : X,
+      PTree.get key tr = Some val /\ (P key val).
+
+  Theorem exists_tree_set :
+    forall tr : tree,
+    forall key : positive,
+    forall val : X,
+      (P key val) ->
+      (exists_tree (PTree.set key val tr)).
+  Proof.
+    unfold exists_tree.
+    intros tr key val Pkeyval.
+    exists key. exists val.
+    rewrite PTree.gss.
+    auto.
+  Qed.
+
+  Section PROPAGATE.
+    Variable Y : Type.
+    Variable valid : Y -> Prop.
+    Variable f : Y -> positive -> X -> Y.
+    Variable f_respects :
+      forall y key val,
+        (valid y) -> (P key val) -> (valid (f y key val)).
+
+    Theorem fold_tree_propagate:
+      forall tr : tree,
+      forall initial : Y,
+      (forall_tree tr) ->
+      valid initial ->
+      valid (PTree.fold f tr initial).
+    Proof.
+      intros tr initial.
+      rewrite PTree.fold_spec.
+      generalize (PTree.elements_complete tr).
+      generalize (PTree.elements tr).
+      intro l.
+      generalize initial.
+      clear initial.
+      induction l; simpl.
+      { trivial. }
+      destruct a as [key val]; simpl.
+      intros already GET ALL ALREADY.
+      apply IHl; auto.
+    Qed.
+  End PROPERTY.
+
+  Section PROPERTY2.
+    Variable P P' : positive -> X -> Prop.
+    Hypothesis IMPLIES: forall key val, (P key val) -> (P' key val).
+    
+    Lemma forall_tree_implies:
+      forall tr : tree,
+        (forall_tree P tr) -> (forall_tree P' tr).
+    Proof.
+      unfold forall_tree.
+      auto.
+    Qed.      
+  End PROPERTY2.
 End TREES.
