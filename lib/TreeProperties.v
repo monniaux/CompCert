@@ -123,6 +123,15 @@ Section TREES.
     assumption.
   Qed.
 
+  Theorem forall_tree_empty :
+    (forall_tree (PTree.empty X)).
+  Proof.
+    unfold forall_tree.
+    intros.
+    rewrite PTree.gempty in *.
+    discriminate.
+  Qed.
+  
   Definition exists_tree (tr : tree) :=
     exists key : positive,
     exists val : X,
