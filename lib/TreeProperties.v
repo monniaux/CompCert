@@ -6,7 +6,11 @@ David Monniaux, CNRS, VERIMAG
 
 Require Import Maps.
 Require Import BinNums.
+Require Import BinPos.
 Require Import List.
+Require Import Lia.
+
+Set Implicit Arguments.
 
 Section TREES.
   Variable X : Type.
@@ -17,20 +21,20 @@ Section TREES.
   Local Definition tree := PTree.t X.
   Local Definition alist := list (positive * X).
 
-  Definition forall_list (l : alist) :=
+  Definition forall_alist (l : alist) :=
     forall key val,
       In (key, val) l -> (P key val).
   
-  Fixpoint forall_list2 (l : alist) :=
+  Fixpoint forall_alist2 (l : alist) :=
     match l with
     | nil => True
-    | (hi,hv) :: t => (P hi hv) /\ (forall_list2 t)
+    | (hi,hv) :: t => (P hi hv) /\ (forall_alist2 t)
     end.
 
   Lemma forall_list_eqv: forall l : alist,
-      (forall_list l) <-> (forall_list2 l).
+      (forall_alist l) <-> (forall_alist2 l).
   Proof.
-    induction l; unfold forall_list in *; simpl.
+    induction l; unfold forall_alist in *; simpl.
     {
       split; trivial.
       contradiction.
@@ -61,13 +65,13 @@ Section TREES.
       (P key val).
   
   Definition forall_tree2 (tr : tree) :=
-    forall_list (PTree.elements tr).
+    forall_alist (PTree.elements tr).
 
   Lemma forall_tree_eqv :
     forall tr : tree,
       (forall_tree tr) <-> (forall_tree2 tr).
   Proof.
-    unfold forall_tree, forall_tree2, forall_list.
+    unfold forall_tree, forall_tree2, forall_alist.
     intro.
     split.
     {
@@ -179,6 +183,7 @@ Section TREES.
       intros already GET ALL ALREADY.
       apply IHl; auto.
     Qed.
+    End PROPAGATE.
   End PROPERTY.
 
   Section PROPERTY2.
@@ -193,4 +198,102 @@ Section TREES.
       auto.
     Qed.      
   End PROPERTY2.
+
+  Local Open Scope positive.
+  
+  Definition max_key_tree (tr : tree) :=
+    PTree.fold (fun m key _ => Pos.max m key) tr 1.
+
+  Definition bounds_tree (bound : positive) (tr : tree) :=
+    forall_tree (fun key val => key <= bound) tr.
+
+  Definition max_list (l : list positive) :=
+    fold_left Pos.max l 1.
+
+  Lemma fold_max_increase:
+    forall l x y,
+      x <= y ->
+      (fold_left Pos.max l x) <= (fold_left Pos.max l y).
+  Proof.
+    induction l; simpl; trivial.
+    intros.
+    apply IHl.
+    lia.
+  Qed.
+
+  Lemma fold_max_bigger :
+    forall l x,
+      (fold_left Pos.max l x) >= x.
+  Proof.
+    induction l; simpl; intro.
+    lia.
+    specialize IHl with (Pos.max x a).
+    lia.
+  Qed.
+  
+  Lemma max_list_bounds :
+    forall l : list positive,
+    forall x, In x l -> x <= (max_list l).
+  Proof.
+    unfold max_list.
+    induction l; simpl.
+    contradiction.
+    intros x IN.
+    destruct IN as [ EQ | REST ].
+    { subst a.
+      pose proof (fold_max_bigger l (Pos.max 1 x)) as BIG.
+      lia.
+    }
+    pose proof (IHl x REST) as IHLx.
+    assert (fold_left Pos.max l 1 <= fold_left Pos.max l (Pos.max 1 a)).
+    { apply fold_max_increase.
+      lia. }
+    lia.
+  Qed.
+
+  Lemma fold_list_fst :
+    forall f l x,
+      fold_left (fun (a : positive) (p : positive * X) => f a (fst p)) l x =
+      fold_left f (List.map fst l) x.
+  Proof.
+    induction l; simpl; trivial.
+  Qed.
+
+  Lemma forall_alist_fst :
+    forall P al,
+      forall_alist (fun key val => P key) al <->
+      forall x, In x (List.map fst al) -> P x.
+  Proof.
+    unfold forall_alist.
+    intros.
+    split.
+    {
+      intros INP key IN.
+      rewrite in_map_iff in IN.
+      destruct IN as ((key', val'), (OK1, OK2)). simpl in *.
+      apply INP with (val := val').
+      congruence.
+    }
+    intros INP key val IN.
+    apply INP.
+    rewrite in_map_iff.
+    exists (key, val).
+    simpl.
+    auto.
+  Qed.
+    
+  Lemma max_key_bounds_tree:
+    forall tr : tree,
+      (bounds_tree (max_key_tree tr) tr).
+  Proof.
+    intro.
+    unfold bounds_tree.
+    rewrite forall_tree_eqv.
+    unfold forall_tree2, max_key_tree.
+    rewrite PTree.fold_spec.
+    rewrite fold_list_fst.
+    fold (max_list (map fst (PTree.elements tr))).
+    rewrite forall_alist_fst.
+    apply max_list_bounds.
+  Qed.
 End TREES.
