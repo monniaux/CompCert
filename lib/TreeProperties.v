@@ -1,3 +1,9 @@
+(*
+Additional properties on CompCert's PTree structures.
+
+David Monniaux, CNRS, VERIMAG
+ *)
+
 Require Import Maps.
 Require Import BinNums.
 Require Import List.
