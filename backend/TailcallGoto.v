@@ -100,34 +100,32 @@ Definition move (dst : reg) (src : reg) (next : node) : instruction :=
   then Inop next
   else Iop Omove (src :: nil) dst next.
 
-Fixpoint generate_moves (pc : node) (moves : list (reg * reg))
-           (jump_point : node) (already : code*node) : code*node :=
-  let (prevcode, nextnode) := already in 
+Fixpoint generate_moves (moves : list (reg * reg))
+         (jump_point : node) (prevcode : code) (nextnode : node) : code*node :=
   match moves with
-  | nil => ((PTree.set pc (Inop jump_point) prevcode),
-            nextnode)
-  | (arg0, dst0) :: nil =>
-    ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 jump_point) prevcode),
-     nextnode)
-  | (arg0, dst0) :: rest =>
-    generate_moves (snd already) rest jump_point
-      ((PTree.set pc (Iop Omove (arg0 :: nil) dst0 (snd already)) prevcode),
-       (Pos.succ nextnode))            
+  | nil =>
+    (PTree.set nextnode (Inop jump_point) prevcode,
+     (Pos.succ nextnode))
+  | (src, dst) :: rest =>
+    generate_moves rest jump_point
+      (PTree.set nextnode (Iop Omove (src :: nil) dst (Pos.succ nextnode)) prevcode)
+      (Pos.succ nextnode)
   end.
 
 Definition transf_instr (fenv : funenv) (cur_fn : function)
            (tmpalready : reg*(code*node))
            (pc: node) (instr: instruction) : reg*(code*node) :=
-  let (tmp, already) := tmpalready in
-  let (prevcode, nextnode) := already in 
-  match is_self_tailcall fenv cur_fn instr with
-  | None => (tmp, ((PTree.set pc instr prevcode), nextnode))
-  | Some args =>
-     ((Pos.succ tmp),
-      generate_moves pc
-                     (Parmov.parmove reg Pos.eq_dec (fun _ => tmp)
-                                     (List.combine args (fn_params cur_fn)))
-                     (fn_entrypoint cur_fn) already)
+  match tmpalready with
+    (tmp, (prevcode, nextnode)) =>
+    match is_self_tailcall fenv cur_fn instr with
+    | None => (tmp, ((PTree.set pc instr prevcode), nextnode))
+    | Some args =>
+      ((Pos.succ tmp),
+       generate_moves (Parmov.parmove reg Pos.eq_dec (fun _ => tmp)
+                                      (List.combine args (fn_params cur_fn)))
+                      (fn_entrypoint cur_fn)
+                      (PTree.set pc (Inop nextnode) prevcode) nextnode)
+    end
   end.
 
 (* fold:

@@ -207,6 +207,9 @@ Section TREES.
   Definition bounds_tree (bound : positive) (tr : tree) :=
     forall_tree (fun key val => key <= bound) tr.
 
+  Definition strictly_bounds_tree (bound : positive) (tr : tree) :=
+    forall_tree (fun key val => key < bound) tr.
+
   Definition max_list (l : list positive) :=
     fold_left Pos.max l 1.
 
