@@ -45,10 +45,35 @@ Section TREES.
       apply IHl; assumption.
     }
   Qed.      
-  
+
   Definition forall_tree (tr : tree) :=
+    forall key : positive,
+    forall val : X,
+      PTree.get key tr = Some val ->
+      (P key val).
+  
+  Definition forall_tree2 (tr : tree) :=
     forall_list (PTree.elements tr).
 
+  Lemma forall_tree_eqv :
+    forall tr : tree,
+      (forall_tree tr) <-> (forall_tree2 tr).
+  Proof.
+    unfold forall_tree, forall_tree2, forall_list.
+    intro.
+    split.
+    {
+      intros ALL key val IN.
+      apply ALL.
+      apply PTree.elements_complete.
+      assumption.
+    }
+    intros ALL key val GET.
+    apply ALL.
+    apply PTree.elements_correct.
+    assumption.
+  Qed.
+    
   Theorem forall_tree_set :
     forall tr : tree,
     forall key : positive,
@@ -59,18 +84,15 @@ Section TREES.
   Proof.
     unfold forall_tree.
     intros until val. intros Pkeyval Palready.
-    unfold forall_list in *.
-    intros key' val' IN.
-    assert (PTree.get key' (PTree.set key val tr) = Some val') as GET.
-    { apply PTree.elements_complete. assumption. }
+    intros key' val' GET.
     destruct (PTree.elt_eq key key').
-    { subst key'.
+    {
+      subst key'.
       rewrite PTree.gss in GET.
       congruence.
     }
     rewrite PTree.gso in GET by congruence.
     apply Palready.
-    apply PTree.elements_correct.
     assumption.
   Qed.
 
@@ -80,18 +102,16 @@ Section TREES.
       (forall_tree tr) ->
       (forall_tree (PTree.remove key tr)).
   Proof.
-    unfold forall_tree, forall_list.
-    intros tr key ALL key' val' IN.
-    apply ALL.
-    apply PTree.elements_correct.
-    assert ((PTree.get key' (PTree.remove key tr)) = Some val') as GET.
-    { apply PTree.elements_complete.
-      assumption. }
+    unfold forall_tree.
+    intros tr key ALL key' val' GET.
     destruct (PTree.elt_eq key key').
-    { subst key'.
+    {
+      subst key'.
       rewrite PTree.grs in GET.
-      discriminate. }
+      discriminate.
+    }
     rewrite PTree.gro in GET by congruence.
+    apply ALL.
     assumption.
   Qed.
 End TREES.
