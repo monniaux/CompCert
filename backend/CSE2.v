@@ -1,3 +1,9 @@
+(*
+Replace available expressions by the register containing their value.
+
+David Monniaux, CNRS, VERIMAG
+ *)
+
 Require Import Coqlib Maps Errors Integers Floats Lattice Kildall.
 Require Import AST Linking.
 Require Import Memory Registers Op RTL Maps.
