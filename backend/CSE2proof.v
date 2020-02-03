@@ -45,26 +45,26 @@ Section SOUNDNESS.
 Section SAME_MEMORY.
   Variable m : mem.
 
-Definition sem_sym_val sym rs :=
+Definition sem_sym_val sym rs (v : option val) : Prop :=
   match sym with
-  | SMove src => Some (rs # src)
+  | SMove src => v = Some (rs # src)
   | SOp op args =>
-    eval_operation genv sp op (rs ## args) m
+    v = (eval_operation genv sp op (rs ## args) m)
   | SLoad chunk addr args =>
     match eval_addressing genv sp addr rs##args with
-    | Some a => Mem.loadv chunk m a
-    | None   => None
+    | Some a => v = (Mem.loadv chunk m a)
+    | None   => v = None \/ v = Some Vundef
     end
   end.
     
-Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) : option val :=
+Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) (v : val) : Prop :=
   match rel ! x with
-  | None => Some (rs # x)
-  | Some sym => sem_sym_val sym rs
+  | None => True
+  | Some sym => sem_sym_val sym rs (Some (rs # x)) 
   end.
 
 Definition sem_rel (rel : RELATION.t) (rs : regset) :=
-  forall x : reg, (sem_reg rel x rs) = Some (rs # x).
+  forall x : reg, (sem_reg rel x rs (rs # x)).
 
 Definition sem_rel_b (relb : RB.t) (rs : regset) :=
   match relb with
@@ -133,13 +133,11 @@ Proof.
   {
     subst x.
     rewrite PTree.grs.
-    rewrite Regmap.gss.
-    reflexivity.
+    trivial.
   }
   rewrite PTree.gro by congruence.
   rewrite Regmap.gso by congruence.
-  destruct (rel ! x) as [relx | ] eqn:RELx.
-  2: reflexivity.
+  destruct (rel ! x) as [relx | ] eqn:RELx; trivial.
   unfold kill_sym_val.
   pose proof (REL x) as RELinstx.
   rewrite RELx in RELinstx.
@@ -194,11 +192,11 @@ Proof.
     unfold sem_reg.
     rewrite PTree.gss.
     rewrite Regmap.gss.
-    unfold sem_reg in RELsrc.
+    unfold sem_reg in *.
     simpl.
     unfold forward_move.
     destruct (rel ! src) as [ sv |]; simpl.
-    destruct sv; simpl in *.
+    destruct sv eqn:SV; simpl in *.
     {
       destruct (peq dst src0).
       {
@@ -209,7 +207,7 @@ Proof.
       rewrite Regmap.gso by congruence.
       assumption.
     }
-    all: f_equal; apply write_same.
+    all: f_equal; symmetry; apply write_same.
   }
   rewrite Regmap.gso by congruence.
   unfold sem_reg.
@@ -291,6 +289,7 @@ Proof.
     rewrite Regmap.gss.
     simpl.
     rewrite args_replace_dst by auto.
+    symmetry.
     assumption.
   }
   rewrite Regmap.gso by congruence.
@@ -382,6 +381,7 @@ Proof.
     pose proof (REL r) as RELr.
     rewrite RELatr in RELr.
     simpl in RELr.
+    symmetry.
     assumption.
   }
   apply REC; auto.
@@ -463,7 +463,7 @@ Proof.
     pose proof (REL r) as RELr.
     rewrite RELatr in RELr.
     simpl in RELr.
-    destruct eval_addressing; trivial.
+    destruct eval_addressing; congruence.
   }
   apply REC; auto.
 Qed.
@@ -715,7 +715,7 @@ Proof.
   destruct sv; simpl in *; trivial.
   {
     destruct op_depends_on_memory eqn:DEPENDS; simpl; trivial.
-    rewrite <- SEMx.
+    rewrite SEMx.
     apply op_depends_on_memory_correct; auto.
   }
 Qed.
