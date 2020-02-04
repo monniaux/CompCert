@@ -129,13 +129,16 @@ Proof.
   simpl.
   intros rel Hrel.
   intros i sv KILLMEM KILLABLE.
-  rewrite PTree.gfilter1 in KILLMEM.
+  rewrite PTree.gremove_t in KILLMEM.
   exfalso.
   specialize Hrel with (i := i).
   destruct ((var_to_sym rel) ! i) eqn:RELi.
-  2: discriminate.
-  specialize Hrel with (sv := s).  
-  destruct (kill_sym_val_mem s) eqn:KILLs; simpl in KILLMEM; congruence.
+  - specialize Hrel with (sv := s).
+    destruct ((mem_used rel) ! i) eqn:USEDi.
+    discriminate.
+    inv KILLMEM.
+    intuition congruence.
+ - destruct ((mem_used rel) ! i); discriminate.
 Qed.
 Local Hint Resolve wellformed_mem_kill_mem : wellformed.
 
@@ -321,6 +324,7 @@ Proof.
   intro.
   eapply DS.fixpoint_invariant with (ev := Some RELATION.top); eauto with wellformed.
 Qed.
+Local Hint Resolve wellformed_mem_forward_map: wellformed.
 
 Local Transparent kill_reg.
 
@@ -997,24 +1001,33 @@ Lemma kill_mem_sound :
   forall m m' : mem,
   forall rel : RELATION.t,
   forall rs,
+    wellformed_mem rel ->
     sem_rel m rel rs -> sem_rel m' (kill_mem rel) rs.
 Proof.
   unfold sem_rel, sem_reg.
   intros until rs.
-  intros SEM x.
-  pose proof (SEM x) as SEMx.
+  intros WELLFORMED SEM x.
+  unfold wellformed_mem in *.
+  specialize SEM with (x := x).
+  specialize WELLFORMED with (i := x).
   unfold kill_mem.
   simpl.
-  rewrite PTree.gfilter1.
+  rewrite PTree.gremove_t.
   unfold kill_sym_val_mem.
-  destruct ((var_to_sym rel) ! x) as [ sv | ].
-  2: reflexivity.
-  destruct sv; simpl in *; trivial.
-  {
-    destruct op_depends_on_memory eqn:DEPENDS; simpl; trivial.
-    rewrite SEMx.
-    apply op_depends_on_memory_correct; auto.
-  }
+  destruct ((var_to_sym rel) ! x) as [ sv | ] eqn:VAR.
+  - specialize WELLFORMED with (sv0 := sv).
+    destruct ((mem_used rel) ! x) eqn:USED; trivial.
+    unfold sem_sym_val in *.
+    destruct sv; simpl in *; trivial.
+    + rewrite op_depends_on_memory_correct with (m2 := m).
+      assumption.
+      destruct op_depends_on_memory; intuition congruence.
+    + intuition discriminate.
+  - replace (match (mem_used rel) ! x with
+        | Some _ | _ => None
+             end) with (@None sym_val) by
+        (destruct ((mem_used rel) ! x); trivial).
+    trivial.
 Qed.
 
 End SOUNDNESS.
@@ -1154,6 +1167,21 @@ Ltac TR_AT :=
   | [ A: (fn_code _)!_ = Some _ |- _ ] =>
         generalize (transf_function_at _ _ _ A); intros
   end.
+
+Lemma wellformed_mem_mpc:
+  forall f map pc mpc,
+    (forward_map f) = Some map ->
+    map # pc = Some mpc ->
+    wellformed_mem mpc.
+Proof.
+  intros.
+  assert (wellformed_mem_fmap map) by eauto with wellformed.
+  unfold wellformed_mem_fmap, wellformed_mem_rb in *.
+  specialize H1 with (i := pc).
+  rewrite H0 in H1.
+  assumption.
+Qed.
+Hint Resolve wellformed_mem_mpc : wellformed.
 
 Lemma step_simulation:
   forall S1 t S2, RTL.step ge S1 t S2 ->
@@ -1413,8 +1441,7 @@ Proof.
   rewrite H.
   reflexivity.
   }
-  apply (kill_mem_sound' sp m).
-  assumption.
+  apply (kill_mem_sound' sp m); eauto with wellformed.
   
 (* call *)
 - econstructor; split.
@@ -1444,8 +1471,7 @@ Proof.
       reflexivity.
     }
     apply kill_reg_sound.
-    apply (kill_mem_sound' sp m).
-    assumption.
+    apply (kill_mem_sound' sp m); eauto with wellformed.
   }
   
 (* tailcall *)

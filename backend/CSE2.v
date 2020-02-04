@@ -296,7 +296,7 @@ Definition kill_sym_val_mem (sv: sym_val) :=
 
 Definition kill_mem (rel : RELATION.t) :=
   mkrel
-    (PTree.filter1 (fun x => negb (kill_sym_val_mem x)) (var_to_sym rel))
+    (PTree.remove_t (var_to_sym rel) (mem_used rel))
     pset_empty.
 
 
