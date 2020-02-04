@@ -625,7 +625,45 @@ Module PTree <: TREE.
      auto.
   Qed.
 
-    Fixpoint xelements (A : Type) (m : t A) (i : positive)
+  Section COMBINE_NULL.
+
+  Variables A B C: Type.
+  Variable f: A -> B -> option C.
+
+  
+  Fixpoint combine_null (m1: t A) (m2: t B) {struct m1} : t C :=
+    match m1, m2 with
+    | (Node l1 o1 r1), (Node l2 o2 r2) =>
+      Node' (combine_null l1 l2)
+            (match o1, o2 with
+             | (Some x1), (Some x2) => f x1 x2
+             | _, _ => None
+             end)
+            (combine_null r1 r2)
+    | _, _ => Leaf
+    end.
+
+  Theorem gcombine_null:
+      forall (m1: t A) (m2: t B) (i: positive),
+        get i (combine_null m1 m2) =
+        match (get i m1), (get i m2) with
+        | (Some x1), (Some x2) => f x1 x2
+        | _, _ => None
+        end.
+  Proof.
+    induction m1; intros; simpl.
+    - rewrite gleaf. rewrite gleaf.
+      reflexivity.
+    - destruct m2; simpl.
+      + rewrite gleaf. rewrite gleaf.
+        destruct get; reflexivity.
+      + rewrite gnode'.
+        destruct i; simpl; try rewrite IHm1_1; try rewrite IHm1; trivial.
+  Qed.
+
+  End COMBINE_NULL.
+
+  Fixpoint xelements (A : Type) (m : t A) (i : positive)
                        (k: list (positive * A)) {struct m}
                        : list (positive * A) :=
       match m with
