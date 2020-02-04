@@ -676,6 +676,42 @@ Module PTree <: TREE.
 
   End COMBINE_NULL.
 
+  Section REMOVE_TREE.
+
+  Variables A B: Type.
+
+  Fixpoint remove_t (m1: t A) (m2: t B) {struct m1} : t A :=
+    match m1, m2 with
+    | Leaf, _ | _, Leaf => m1
+    | (Node l1 o1 r1), (Node l2 o2 r2) =>
+      Node' (remove_t l1 l2)
+            (match o2 with
+             | Some _ => None
+             | None => o1
+             end)
+            (remove_t r1 r2)
+    end.
+
+  Theorem gremove_t:
+    forall m1 : t A,
+    forall m2 : t B,
+    forall i : positive,
+      get i (remove_t m1 m2) = match get i m2 with
+                               | None => get i m1
+                               | Some _ => None
+                               end.
+  Proof.
+    induction m1; intros; simpl.
+    - rewrite gleaf.
+      destruct get; reflexivity.
+    - destruct m2; simpl.
+      + rewrite gleaf.
+        reflexivity.
+      + rewrite gnode'.
+        destruct i; simpl; try rewrite IHm1_1; try rewrite IHm1; trivial.
+  Qed.      
+  End REMOVE_TREE.
+  
   Fixpoint xelements (A : Type) (m : t A) (i : positive)
                        (k: list (positive * A)) {struct m}
                        : list (positive * A) :=
