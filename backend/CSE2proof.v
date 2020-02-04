@@ -68,6 +68,13 @@ Definition wellformed_mem (rel : RELATION.t) : Prop :=
   kill_sym_val_mem sv = true ->
   (mem_used rel) ! i = Some tt.
 
+Definition wellformed_reg (rel : RELATION.t) : Prop :=
+  forall i j sv,
+  (var_to_sym rel) ! i = Some sv ->
+  kill_sym_val j sv = true ->
+  exists uses, (reg_used rel) ! j = Some uses /\
+               uses ! i = Some tt.
+
 Lemma wellformed_mem_top : wellformed_mem RELATION.top.
 Proof.
   unfold wellformed_mem, RELATION.top, pset_empty.
@@ -77,6 +84,16 @@ Proof.
   discriminate.
 Qed.
 Local Hint Resolve wellformed_mem_top : wellformed.
+
+Lemma wellformed_reg_top : wellformed_reg RELATION.top.
+Proof.
+  unfold wellformed_reg, RELATION.top, pset_empty.
+  simpl.
+  intros.
+  rewrite PTree.gempty in *.
+  discriminate.
+Qed.
+Local Hint Resolve wellformed_reg_top : wellformed.
 
 Lemma wellformed_mem_lub : forall a b,
     (wellformed_mem a) -> (wellformed_mem b) -> (wellformed_mem (RELATION.lub a b)).
@@ -97,6 +114,42 @@ Proof.
   split; eauto.
 Qed.
 Local Hint Resolve wellformed_mem_lub : wellformed.
+
+Lemma wellformed_reg_lub : forall a b,
+    (wellformed_reg a) -> (wellformed_reg b) -> (wellformed_reg (RELATION.lub a b)).
+Proof.
+  unfold wellformed_reg, RELATION.lub.
+  simpl.
+  intros a b Ha Hb.
+  intros i j sv COMBINE KILLABLE.
+  specialize Ha with (i := i) (j := j).
+  specialize Hb with (i := i) (j := j).
+  rewrite PTree.gcombine in *.
+  2: reflexivity.
+  destruct (var_to_sym a) ! i as [syma | ] eqn:SYMA;
+    destruct (var_to_sym b) ! i as [symb | ] eqn:SYMB;
+    try discriminate.
+  specialize Ha with (sv := syma).
+  specialize Hb with (sv := symb).
+  destruct (eq_sym_val syma symb); try discriminate.
+  subst syma.
+  inv COMBINE.
+  assert (exists usesA : pset, (reg_used a) ! j = Some usesA /\ usesA ! i = Some tt) as USESA by auto.
+  assert (exists usesB : pset, (reg_used b) ! j = Some usesB /\ usesB ! i = Some tt) as USESB by auto.
+  destruct USESA as [uA [uA1 uA2]].
+  destruct USESB as [uB [uB1 uB2]].
+  rewrite PTree.gcombine_null.
+  rewrite uA1.
+  rewrite uB1.
+  pose proof (PTree.bempty_canon_correct (pset_inter uA uB) i) as EMPTY.
+  destruct PTree.bempty_canon.
+  - rewrite gpset_inter_none in EMPTY.
+    intuition congruence.
+  - econstructor; split; eauto.
+    rewrite gpset_inter_some.
+    auto.
+Qed.
+Local Hint Resolve wellformed_reg_lub : wellformed.
 
 Lemma wellformed_mem_kill_reg:
   forall dst rel,
