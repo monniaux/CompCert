@@ -29,9 +29,20 @@ Proof.
   decide equality.
 Defined.
 
+Definition pset := PTree.t unit.
+
+Definition pset_inter : pset -> pset -> pset :=
+  PTree.combine_null
+    (fun ov1 ov2 => Some tt).
+
+Definition pset_empty : pset := PTree.empty unit.
+Definition pset_add (i : positive) (s : pset) := PTree.set i tt s.
+Definition pset_remove (i : positive) (s : pset) := PTree.remove i s.
+
 Record relmap := mkrel {
-              var_to_sym : (PTree.t sym_val)
-                   }.
+   var_to_sym : PTree.t sym_val ;
+   mem_used : pset
+ }.
 
 Module RELATION.
 
@@ -40,7 +51,7 @@ Definition t := relmap.
 Definition eq (r1 r2 : t) :=
   forall x, (PTree.get x (var_to_sym r1)) = (PTree.get x (var_to_sym r2)).
 
-Definition top : t := mkrel (PTree.empty sym_val).
+Definition top : t := mkrel (PTree.empty sym_val) pset_empty.
 
 Lemma eq_refl: forall x, eq x x.
 Proof.
@@ -119,7 +130,8 @@ Definition lub (r1 r2 : t) :=
        | None, _
        | _, None => None
        end)
-    (var_to_sym r1) (var_to_sym r2)).
+    (var_to_sym r1) (var_to_sym r2))
+  (pset_inter (mem_used r1) (mem_used r2)).
 
 Lemma ge_lub_left: forall x y, ge (lub x y) x.
 Proof.
@@ -268,9 +280,10 @@ Definition kill_sym_val (dst : reg) (sv : sym_val) :=
   | SLoad chunk addr args => List.existsb (peq dst) args
   end.
                                                  
-Definition kill_reg (dst : reg) (rel : RELATION.t) :=
+Definition kill_reg (dst : reg) (rel : RELATION.t) : RELATION.t :=
   mkrel (PTree.filter1 (fun x => negb (kill_sym_val dst x))
-                       (PTree.remove dst (var_to_sym rel))).
+                       (PTree.remove dst (var_to_sym rel)))
+        (pset_remove dst (mem_used rel)).
 
 Definition kill_sym_val_mem (sv: sym_val) :=
   match sv with
@@ -281,7 +294,8 @@ Definition kill_sym_val_mem (sv: sym_val) :=
 
 Definition kill_mem (rel : RELATION.t) :=
   mkrel
-    (PTree.filter1 (fun x => negb (kill_sym_val_mem x)) (var_to_sym rel)).
+    (PTree.filter1 (fun x => negb (kill_sym_val_mem x)) (var_to_sym rel))
+    pset_empty.
 
 
 Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
@@ -291,7 +305,8 @@ Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
   end.
 
 Definition move (src dst : reg) (rel : RELATION.t) :=
-  mkrel (PTree.set dst (SMove (forward_move rel src)) (var_to_sym (kill_reg dst rel))).
+  mkrel (PTree.set dst (SMove (forward_move rel src)) (var_to_sym (kill_reg dst rel)))
+        (mem_used rel).
 
 Definition find_op_fold op args (already : option reg) x sv :=
                 match already with
@@ -328,34 +343,36 @@ Definition find_load (rel : RELATION.t) (chunk : memory_chunk) (addr : addressin
   PTree.fold (find_load_fold chunk addr args) (var_to_sym rel) None.
 
 Definition oper2 (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
+           (rel : RELATION.t) : RELATION.t :=
   let rel' := kill_reg dst rel in
-  mkrel (PTree.set dst (SOp op (List.map (forward_move rel') args)) (var_to_sym rel')).
+  mkrel (PTree.set dst (SOp op (List.map (forward_move rel') args)) (var_to_sym rel'))
+        (mem_used rel).
 
 Definition oper1 (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
+           (rel : RELATION.t) : RELATION.t :=
   if List.in_dec peq dst args
   then kill_reg dst rel
   else oper2 op dst args rel.
 
 Definition oper (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
+           (rel : RELATION.t) : RELATION.t :=
   match find_op rel op (List.map (forward_move rel) args) with
   | Some r => move r dst rel
   | None => oper1 op dst args rel
   end.
 
 Definition gen_oper (op: operation) (dst : reg) (args : list reg)
-           (rel : RELATION.t) :=
+           (rel : RELATION.t) : RELATION.t :=
   match op, args with
   | Omove, src::nil => move src dst rel
   | _, _ => oper op dst args rel
   end.
 
 Definition load2 (chunk: memory_chunk) (addr : addressing)
-           (dst : reg) (args : list reg) (rel : RELATION.t) :=
+           (dst : reg) (args : list reg) (rel : RELATION.t) : RELATION.t :=
   let rel' := kill_reg dst rel in
-  mkrel (PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) (var_to_sym rel')).
+  mkrel (PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) (var_to_sym rel'))
+        (pset_add dst (mem_used rel)).
 
 Definition load1 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) :=

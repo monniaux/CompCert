@@ -37,6 +37,104 @@ Proof.
   assumption.
 Qed.
 
+Lemma gpset_inter_none: forall a b i,
+    (pset_inter a b) ! i = None <->
+    (a ! i = None) \/ (b ! i = None).
+Proof.
+  intros. unfold pset_inter.
+  rewrite PTree.gcombine_null.
+  destruct (a ! i); destruct (b ! i); intuition discriminate.
+Qed.
+
+Lemma some_some:
+  forall x : option unit,
+    x <> None <-> x = Some tt.
+Proof.
+  destruct x as [[] | ]; split; congruence.
+Qed.  
+
+Lemma gpset_inter_some: forall a b i,
+    (pset_inter a b) ! i = Some tt <->
+    (a ! i = Some tt) /\ (b ! i = Some tt).
+Proof.
+  intros. unfold pset_inter.
+  rewrite PTree.gcombine_null.
+  destruct (a ! i) as [[] | ]; destruct (b ! i) as [[] | ]; intuition congruence.
+Qed.
+
+Definition wellformed (rel : RELATION.t) : Prop :=
+  forall i sv,
+  (var_to_sym rel) ! i = Some sv ->
+  kill_sym_val_mem sv = true ->
+  (mem_used rel) ! i = Some tt.
+
+Lemma wellformed_top : wellformed RELATION.top.
+Proof.
+  unfold wellformed, RELATION.top, pset_empty.
+  simpl.
+  intros.
+  rewrite PTree.gempty in *.
+  discriminate.
+Qed.
+
+Lemma wellformed_lub : forall a b,
+    (wellformed a) -> (wellformed b) -> (wellformed (RELATION.lub a b)).
+Proof.
+  unfold wellformed, RELATION.lub.
+  simpl.
+  intros a b Ha Hb.
+  intros i sv COMBINE KILLABLE.
+  rewrite PTree.gcombine in *.
+  2: reflexivity.
+  destruct (var_to_sym a) ! i as [syma | ] eqn:SYMA;
+    destruct (var_to_sym b) ! i as [symb | ] eqn:SYMB;
+    try discriminate.
+  destruct (eq_sym_val syma symb); try discriminate.
+  subst syma.
+  inv COMBINE.
+  apply gpset_inter_some.
+  split; eauto.
+Qed.
+
+Lemma wellformed_kill_reg:
+  forall dst rel,
+    (wellformed rel) -> (wellformed (kill_reg dst rel)).
+Proof.
+  unfold wellformed, kill_reg, pset_remove.
+  simpl.
+  intros dst rel Hrel.
+  intros i sv KILLREG KILLABLE.
+  rewrite PTree.gfilter1 in KILLREG.
+  destruct (peq dst i).
+  { subst i.
+    rewrite PTree.grs in *.
+    discriminate.
+  }
+  rewrite PTree.gro in * by congruence.
+  specialize Hrel with (i := i).
+  eapply Hrel.
+  2: eassumption.  
+  destruct (_ ! i); try discriminate.
+  destruct negb; congruence.
+Qed.
+
+Lemma wellformed_kill_mem:
+  forall rel,
+    (wellformed rel) -> (wellformed (kill_mem rel)).
+Proof.
+  unfold wellformed, kill_mem.
+  simpl.
+  intros rel Hrel.
+  intros i sv KILLMEM KILLABLE.
+  rewrite PTree.gfilter1 in KILLMEM.
+  exfalso.
+  specialize Hrel with (i := i).
+  destruct ((var_to_sym rel) ! i) eqn:RELi.
+  2: discriminate.
+  specialize Hrel with (sv := s).  
+  destruct (kill_sym_val_mem s) eqn:KILLs; simpl in KILLMEM; congruence.
+Qed.
+  
 Section SOUNDNESS.
   Variable F V : Type.
   Variable genv: Genv.t F V.
