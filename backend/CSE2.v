@@ -29,13 +29,18 @@ Proof.
   decide equality.
 Defined.
 
-Module RELATION.
-  
-Definition t := (PTree.t sym_val).
-Definition eq (r1 r2 : t) :=
-  forall x, (PTree.get x r1) = (PTree.get x r2).
+Record relmap := mkrel {
+              var_to_sym : (PTree.t sym_val)
+                   }.
 
-Definition top : t := PTree.empty sym_val.
+Module RELATION.
+
+Definition t := relmap.
+
+Definition eq (r1 r2 : t) :=
+  forall x, (PTree.get x (var_to_sym r1)) = (PTree.get x (var_to_sym r2)).
+
+Definition top : t := mkrel (PTree.empty sym_val).
 
 Lemma eq_refl: forall x, eq x x.
 Proof.
@@ -58,27 +63,27 @@ Qed.
 Definition sym_val_beq (x y : sym_val) :=
   if eq_sym_val x y then true else false.
 
-Definition beq (r1 r2 : t) := PTree.beq sym_val_beq r1 r2.
+Definition beq (r1 r2 : t) := PTree.beq sym_val_beq (var_to_sym r1) (var_to_sym r2).
 
 Lemma beq_correct: forall r1 r2, beq r1 r2 = true -> eq r1 r2.
 Proof.
   unfold beq, eq. intros r1 r2 EQ x.
-  pose proof (PTree.beq_correct sym_val_beq r1 r2) as CORRECT.
+  pose proof (PTree.beq_correct sym_val_beq (var_to_sym r1) (var_to_sym r2)) as CORRECT.
   destruct CORRECT as [CORRECTF CORRECTB].
   pose proof (CORRECTF EQ x) as EQx.
   clear CORRECTF CORRECTB EQ.
   unfold sym_val_beq in *.
-  destruct (r1 ! x) as [R1x | ] in *;
-    destruct (r2 ! x) as [R2x | ] in *;
+  destruct ((var_to_sym r1) ! x) as [R1x | ] in *;
+    destruct ((var_to_sym r2) ! x) as [R2x | ] in *;
     trivial; try contradiction.
   destruct (eq_sym_val R1x R2x) in *; congruence.
 Qed.
 
 Definition ge (r1 r2 : t) :=
   forall x,
-    match PTree.get x r1 with
+    match PTree.get x (var_to_sym r1) with
     | None => True
-    | Some v => (PTree.get x r2) = Some v
+    | Some v => (PTree.get x (var_to_sym r2)) = Some v
     end.
 
 Lemma ge_refl: forall r1 r2, eq r1 r2 -> ge r1 r2.
@@ -87,7 +92,7 @@ Proof.
   intros r1 r2 EQ x.
   pose proof (EQ x) as EQx.
   clear EQ.
-  destruct (r1 ! x).
+  destruct ((var_to_sym r1) ! x).
   - congruence.
   - trivial.
 Qed.
@@ -98,12 +103,13 @@ Proof.
   intros r1 r2 r3 GE12 GE23 x.
   pose proof (GE12 x) as GE12x; clear GE12.
   pose proof (GE23 x) as GE23x; clear GE23.
-  destruct (r1 ! x); trivial.
-  destruct (r2 ! x); congruence.
+  destruct ((var_to_sym r1) ! x); trivial.
+  destruct ((var_to_sym r2) ! x); congruence.
 Qed.
 
 Definition lub (r1 r2 : t) :=
-  PTree.combine
+  mkrel
+  (PTree.combine
     (fun ov1 ov2 =>
        match ov1, ov2 with
        | (Some v1), (Some v2) =>
@@ -113,12 +119,12 @@ Definition lub (r1 r2 : t) :=
        | None, _
        | _, None => None
        end)
-    r1 r2.
+    (var_to_sym r1) (var_to_sym r2)).
 
 Lemma ge_lub_left: forall x y, ge (lub x y) x.
 Proof.
   unfold ge, lub.
-  intros r1 r2 x.
+  intros r1 r2 x. simpl.
   rewrite PTree.gcombine by reflexivity.
   destruct (_ ! _); trivial.
   destruct (_ ! _); trivial.
@@ -128,7 +134,7 @@ Qed.
 Lemma ge_lub_right: forall x y, ge (lub x y) y.
 Proof.
   unfold ge, lub.
-  intros r1 r2 x.
+  intros r1 r2 x. simpl.
   rewrite PTree.gcombine by reflexivity.
   destruct (_ ! _); trivial.
   destruct (_ ! _); trivial.
@@ -263,8 +269,8 @@ Definition kill_sym_val (dst : reg) (sv : sym_val) :=
   end.
                                                  
 Definition kill_reg (dst : reg) (rel : RELATION.t) :=
-  PTree.filter1 (fun x => negb (kill_sym_val dst x))
-                (PTree.remove dst rel).
+  mkrel (PTree.filter1 (fun x => negb (kill_sym_val dst x))
+                       (PTree.remove dst (var_to_sym rel))).
 
 Definition kill_sym_val_mem (sv: sym_val) :=
   match sv with
@@ -274,17 +280,18 @@ Definition kill_sym_val_mem (sv: sym_val) :=
   end.
 
 Definition kill_mem (rel : RELATION.t) :=
-  PTree.filter1 (fun x => negb (kill_sym_val_mem x)) rel.
+  mkrel
+    (PTree.filter1 (fun x => negb (kill_sym_val_mem x)) (var_to_sym rel)).
 
 
 Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
-  match rel ! x with
+  match (var_to_sym rel) ! x with
   | Some (SMove org) => org
   | _ => x
   end.
 
 Definition move (src dst : reg) (rel : RELATION.t) :=
-  PTree.set dst (SMove (forward_move rel src)) (kill_reg dst rel).
+  mkrel (PTree.set dst (SMove (forward_move rel src)) (var_to_sym (kill_reg dst rel))).
 
 Definition find_op_fold op args (already : option reg) x sv :=
                 match already with
@@ -300,7 +307,7 @@ Definition find_op_fold op args (already : option reg) x sv :=
                 end.
 
 Definition find_op (rel : RELATION.t) (op : operation) (args : list reg) :=
-  PTree.fold (find_op_fold op args) rel None.
+  PTree.fold (find_op_fold op args) (var_to_sym rel) None.
 
 Definition find_load_fold chunk addr args (already : option reg) x sv :=
                 match already with
@@ -318,12 +325,12 @@ Definition find_load_fold chunk addr args (already : option reg) x sv :=
                 end.
 
 Definition find_load (rel : RELATION.t) (chunk : memory_chunk) (addr : addressing) (args : list reg) :=
-  PTree.fold (find_load_fold chunk addr args) rel None.
+  PTree.fold (find_load_fold chunk addr args) (var_to_sym rel) None.
 
 Definition oper2 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
   let rel' := kill_reg dst rel in
-  PTree.set dst (SOp op (List.map (forward_move rel') args)) rel'.
+  mkrel (PTree.set dst (SOp op (List.map (forward_move rel') args)) (var_to_sym rel')).
 
 Definition oper1 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) :=
@@ -348,7 +355,7 @@ Definition gen_oper (op: operation) (dst : reg) (args : list reg)
 Definition load2 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) :=
   let rel' := kill_reg dst rel in
-  PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) rel'.
+  mkrel (PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) (var_to_sym rel')).
 
 Definition load1 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) :=

@@ -58,7 +58,7 @@ Definition sem_sym_val sym rs (v : option val) : Prop :=
   end.
     
 Definition sem_reg (rel : RELATION.t) (x : reg) (rs : regset) (v : val) : Prop :=
-  match rel ! x with
+  match (var_to_sym rel) ! x with
   | None => True
   | Some sym => sem_sym_val sym rs (Some (rs # x)) 
   end.
@@ -98,7 +98,7 @@ Proof.
   pose proof (SEM arg) as SEMarg.
   simpl. unfold forward_move.
   unfold sem_sym_val in *.
-  destruct (t ! arg); trivial.
+  destruct (_ ! arg); trivial.
   destruct s; congruence.
 Qed.
 
@@ -127,7 +127,7 @@ Lemma kill_reg_sound :
 Proof.
   unfold sem_rel, kill_reg, sem_reg, sem_sym_val.
   intros until v.
-  intros REL x.
+  intros REL x. simpl.
   rewrite PTree.gfilter1.
   destruct (Pos.eq_dec dst x).
   {
@@ -137,7 +137,7 @@ Proof.
   }
   rewrite PTree.gro by congruence.
   rewrite Regmap.gso by congruence.
-  destruct (rel ! x) as [relx | ] eqn:RELx; trivial.
+  destruct (_ ! x) as [relx | ] eqn:RELx; trivial.
   unfold kill_sym_val.
   pose proof (REL x) as RELinstx.
   rewrite RELx in RELinstx.
@@ -190,12 +190,13 @@ Proof.
   {
     subst x.
     unfold sem_reg.
+    simpl.
     rewrite PTree.gss.
     rewrite Regmap.gss.
     unfold sem_reg in *.
     simpl.
     unfold forward_move.
-    destruct (rel ! src) as [ sv |]; simpl.
+    destruct (_ ! src) as [ sv |]; simpl.
     destruct sv eqn:SV; simpl in *.
     {
       destruct (peq dst src0).
@@ -211,6 +212,7 @@ Proof.
   }
   rewrite Regmap.gso by congruence.
   unfold sem_reg.
+  simpl.
   rewrite PTree.gso by congruence.
   rewrite Regmap.gso in KILL by congruence.
   exact KILL.
@@ -223,9 +225,10 @@ Lemma move_cases_neq:
 Proof.
   intros until a. intro NEQ.
   unfold kill_reg, forward_move.
+  simpl.
   rewrite PTree.gfilter1.
   rewrite PTree.gro by congruence.
-  destruct (rel ! a); simpl.
+  destruct (_ ! a); simpl.
   2: congruence.
   destruct s.
   {
@@ -259,9 +262,10 @@ Proof.
   unfold kill_reg.
   unfold sem_reg in RELa.
   unfold forward_move.
+  simpl.
   rewrite PTree.gfilter1.
   rewrite PTree.gro by auto.
-  destruct (rel ! a); simpl; trivial.
+  destruct (_ ! a); simpl; trivial.
   destruct s; simpl in *; destruct negb; simpl; congruence.
 Qed.
 
@@ -285,6 +289,7 @@ Proof.
   {
     subst x.
     unfold sem_reg.
+    simpl.
     rewrite PTree.gss.
     rewrite Regmap.gss.
     simpl.
@@ -294,6 +299,7 @@ Proof.
   }
   rewrite Regmap.gso by congruence.
   unfold sem_reg.
+  simpl.
   rewrite PTree.gso by congruence.
   rewrite Regmap.gso in KILL by congruence.
   exact KILL.
@@ -341,13 +347,13 @@ Proof.
              | Some src => eval_operation genv sp op rs ## args m = Some rs # src
              end -> fold_left
     (fun (a : option reg) (p : positive * sym_val) =>
-     find_op_fold op args a (fst p) (snd p)) (PTree.elements rel) start =
+     find_op_fold op args a (fst p) (snd p)) (PTree.elements (var_to_sym rel)) start =
                     Some src ->
              eval_operation genv sp op rs ## args m = Some rs # src) as REC.
   {
     unfold sem_rel, sem_reg in REL.
-    generalize (PTree.elements_complete rel).
-    generalize (PTree.elements rel).
+    generalize (PTree.elements_complete (var_to_sym rel)).
+    generalize (PTree.elements (var_to_sym rel)).
     induction l; simpl.
     {
       intros.
@@ -372,7 +378,7 @@ Proof.
     destruct eq_args; trivial.
     subst args0.
     simpl.
-    assert ((rel ! r) = Some (SOp op args)) as RELatr.
+    assert (((var_to_sym rel) ! r) = Some (SOp op args)) as RELatr.
     {
       apply COMPLETE.
       left.
@@ -417,7 +423,7 @@ Proof.
              end ->
     fold_left
     (fun (a : option reg) (p : positive * sym_val) =>
-     find_load_fold chunk addr args a (fst p) (snd p)) (PTree.elements rel) start =
+     find_load_fold chunk addr args a (fst p) (snd p)) (PTree.elements (var_to_sym rel)) start =
     Some src ->
     match eval_addressing genv sp addr rs##args with
                | Some a => (Mem.loadv chunk m a) = Some (rs # src)
@@ -426,8 +432,8 @@ Proof.
   
   {
     unfold sem_rel, sem_reg in REL.
-    generalize (PTree.elements_complete rel).
-    generalize (PTree.elements rel).
+    generalize (PTree.elements_complete (var_to_sym rel)).
+    generalize (PTree.elements (var_to_sym rel)).
     induction l; simpl.
     {
       intros.
@@ -454,7 +460,7 @@ Proof.
     destruct eq_args; trivial.
     subst args0.
     simpl.
-    assert ((rel ! r) = Some (SLoad chunk addr args)) as RELatr.
+    assert (((var_to_sym rel) ! r) = Some (SLoad chunk addr args)) as RELatr.
     {
       apply COMPLETE.
       left.
@@ -497,7 +503,7 @@ Proof.
   2: (apply IHargs; assumption).
   unfold forward_move, sem_rel, sem_reg, sem_sym_val in *.
   pose proof (REL a) as RELa.
-  destruct (rel ! a); trivial.
+  destruct (_ ! a); trivial.
   destruct s; congruence.
 Qed.
 
@@ -580,6 +586,7 @@ Proof.
   {
     subst x.
     unfold sem_reg.
+    simpl.
     rewrite PTree.gss.
     rewrite Regmap.gss.
     simpl.
@@ -588,6 +595,7 @@ Proof.
   }
   rewrite Regmap.gso by congruence.
   unfold sem_reg.
+  simpl.
   rewrite PTree.gso by congruence.
   rewrite Regmap.gso in KILL by congruence.
   exact KILL.
@@ -661,6 +669,7 @@ Proof.
   intros REL x.
   pose proof (REL x) as RELx.
   unfold kill_reg, sem_reg in *.
+  simpl.
   rewrite PTree.gfilter1.
   destruct (peq res x).
   { subst x.
@@ -668,7 +677,7 @@ Proof.
     reflexivity.
   }
   rewrite PTree.gro by congruence.
-  destruct (mpc ! x) as [sv | ]; trivial.
+  destruct (_ ! x) as [sv | ]; trivial.
   destruct negb; trivial.
 Qed.
 
@@ -691,8 +700,8 @@ Proof.
   pose proof (RE x) as REx.
   pose proof (GE x) as GEx.
   unfold sem_reg in *.
-  destruct (r1 ! x) as [r1x | ] in *;
-    destruct (r2 ! x) as [r2x | ] in *;
+  destruct ((var_to_sym r1) ! x) as [r1x | ] in *;
+    destruct ((var_to_sym r2) ! x) as [r2x | ] in *;
     congruence.
 Qed.
 End SAME_MEMORY.
@@ -708,9 +717,10 @@ Proof.
   intros SEM x.
   pose proof (SEM x) as SEMx.
   unfold kill_mem.
+  simpl.
   rewrite PTree.gfilter1.
   unfold kill_sym_val_mem.
-  destruct (rel ! x) as [ sv | ].
+  destruct ((var_to_sym rel) ! x) as [ sv | ].
   2: reflexivity.
   destruct sv; simpl in *; trivial.
   {
