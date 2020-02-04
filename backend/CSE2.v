@@ -305,8 +305,9 @@ Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
   end.
 
 Definition move (src dst : reg) (rel : RELATION.t) :=
-  mkrel (PTree.set dst (SMove (forward_move rel src)) (var_to_sym (kill_reg dst rel)))
-        (mem_used rel).
+  let rel0 := kill_reg dst rel in
+  mkrel (PTree.set dst (SMove (forward_move rel src)) (var_to_sym rel0))
+        (mem_used rel0).
 
 Definition find_op_fold op args (already : option reg) x sv :=
                 match already with
@@ -346,7 +347,8 @@ Definition oper2 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) : RELATION.t :=
   let rel' := kill_reg dst rel in
   mkrel (PTree.set dst (SOp op (List.map (forward_move rel') args)) (var_to_sym rel'))
-        (mem_used rel).
+        (if op_depends_on_memory op then (pset_add dst (mem_used rel'))
+         else mem_used rel').
 
 Definition oper1 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) : RELATION.t :=
@@ -372,7 +374,7 @@ Definition load2 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) : RELATION.t :=
   let rel' := kill_reg dst rel in
   mkrel (PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) (var_to_sym rel'))
-        (pset_add dst (mem_used rel)).
+        (pset_add dst (mem_used rel')).
 
 Definition load1 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) :=

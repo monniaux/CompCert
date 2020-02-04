@@ -62,25 +62,26 @@ Proof.
   destruct (a ! i) as [[] | ]; destruct (b ! i) as [[] | ]; intuition congruence.
 Qed.
 
-Definition wellformed (rel : RELATION.t) : Prop :=
+Definition wellformed_mem (rel : RELATION.t) : Prop :=
   forall i sv,
   (var_to_sym rel) ! i = Some sv ->
   kill_sym_val_mem sv = true ->
   (mem_used rel) ! i = Some tt.
 
-Lemma wellformed_top : wellformed RELATION.top.
+Lemma wellformed_mem_top : wellformed_mem RELATION.top.
 Proof.
-  unfold wellformed, RELATION.top, pset_empty.
+  unfold wellformed_mem, RELATION.top, pset_empty.
   simpl.
   intros.
   rewrite PTree.gempty in *.
   discriminate.
 Qed.
+Local Hint Resolve wellformed_mem_top : wellformed.
 
-Lemma wellformed_lub : forall a b,
-    (wellformed a) -> (wellformed b) -> (wellformed (RELATION.lub a b)).
+Lemma wellformed_mem_lub : forall a b,
+    (wellformed_mem a) -> (wellformed_mem b) -> (wellformed_mem (RELATION.lub a b)).
 Proof.
-  unfold wellformed, RELATION.lub.
+  unfold wellformed_mem, RELATION.lub.
   simpl.
   intros a b Ha Hb.
   intros i sv COMBINE KILLABLE.
@@ -95,12 +96,13 @@ Proof.
   apply gpset_inter_some.
   split; eauto.
 Qed.
+Local Hint Resolve wellformed_mem_lub : wellformed.
 
-Lemma wellformed_kill_reg:
+Lemma wellformed_mem_kill_reg:
   forall dst rel,
-    (wellformed rel) -> (wellformed (kill_reg dst rel)).
+    (wellformed_mem rel) -> (wellformed_mem (kill_reg dst rel)).
 Proof.
-  unfold wellformed, kill_reg, pset_remove.
+  unfold wellformed_mem, kill_reg, pset_remove.
   simpl.
   intros dst rel Hrel.
   intros i sv KILLREG KILLABLE.
@@ -117,12 +119,13 @@ Proof.
   destruct (_ ! i); try discriminate.
   destruct negb; congruence.
 Qed.
+Local Hint Resolve wellformed_mem_kill_reg : wellformed.
 
-Lemma wellformed_kill_mem:
+Lemma wellformed_mem_kill_mem:
   forall rel,
-    (wellformed rel) -> (wellformed (kill_mem rel)).
+    (wellformed_mem rel) -> (wellformed_mem (kill_mem rel)).
 Proof.
-  unfold wellformed, kill_mem.
+  unfold wellformed_mem, kill_mem.
   simpl.
   intros rel Hrel.
   intros i sv KILLMEM KILLABLE.
@@ -134,7 +137,143 @@ Proof.
   specialize Hrel with (sv := s).  
   destruct (kill_sym_val_mem s) eqn:KILLs; simpl in KILLMEM; congruence.
 Qed.
-  
+Local Hint Resolve wellformed_mem_kill_mem : wellformed.
+
+Lemma wellformed_mem_move:
+  forall r dst rel,
+    (wellformed_mem rel) -> (wellformed_mem (move r dst rel)).
+Proof.
+  Local Opaque kill_reg.
+  intros; unfold move, wellformed_mem; simpl.
+  intros i sv MOVE KILL.
+  destruct (peq i dst).
+  { subst i.
+    rewrite PTree.gss in MOVE.
+    inv MOVE.
+    simpl in KILL.
+    discriminate.
+  }
+  rewrite PTree.gso in MOVE by congruence.
+  eapply wellformed_mem_kill_reg; eauto.
+Qed.
+Local Hint Resolve wellformed_mem_move : wellformed.
+
+Lemma wellformed_mem_oper2:
+  forall op dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (oper2 op dst args rel)).
+Proof.
+  intros until rel. intro WELLFORMED.
+  unfold oper2.
+  intros i sv MOVE OPER.
+  simpl in *.
+  destruct (peq i dst).
+  { subst i.
+    rewrite PTree.gss in MOVE.
+    inv MOVE.
+    simpl in OPER.
+    rewrite OPER.
+    apply PTree.gss.
+  }
+  unfold pset_add.
+  rewrite PTree.gso in MOVE by congruence.
+  destruct op_depends_on_memory.
+  - rewrite PTree.gso by congruence.
+    eapply wellformed_mem_kill_reg; eauto.
+  - eapply wellformed_mem_kill_reg; eauto.
+Qed.
+Local Hint Resolve wellformed_mem_oper2 : wellformed.
+
+Lemma wellformed_mem_oper1:
+  forall op dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (oper1 op dst args rel)).
+Proof.
+  unfold oper1. intros.
+  destruct in_dec ; auto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_oper1 : wellformed.
+
+Lemma wellformed_mem_oper:
+  forall op dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (oper op dst args rel)).
+Proof.
+  unfold oper. intros.
+  destruct find_op ; auto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_oper : wellformed.
+
+Lemma wellformed_mem_gen_oper:
+  forall op dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (gen_oper op dst args rel)).
+Proof.
+  intros.
+  unfold gen_oper.
+  destruct op; auto with wellformed.
+  destruct args; auto with wellformed.
+  destruct args; auto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_gen_oper : wellformed.
+
+Lemma wellformed_mem_load2 :
+  forall chunk addr dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (load2 chunk addr dst args rel)).
+Proof.
+  intros.
+  unfold load2, wellformed_mem.
+  simpl.
+  intros i sv LOAD KILL.
+  destruct (peq i dst).
+  { subst i.
+    apply PTree.gss.
+  }
+  unfold pset_add.
+  rewrite PTree.gso in * by congruence.
+  eapply wellformed_mem_kill_reg; eauto.
+Qed.
+Local Hint Resolve wellformed_mem_load2 : wellformed.
+
+Lemma wellformed_mem_load1 :
+  forall chunk addr dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (load1 chunk addr dst args rel)).
+Proof.
+  intros.
+  unfold load1.
+  destruct in_dec; eauto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_load1 : wellformed.
+
+Lemma wellformed_mem_load :
+  forall chunk addr dst args rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem (load chunk addr dst args rel)).
+Proof.
+  intros.
+  unfold load.
+  destruct find_load; eauto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_load : wellformed.
+
+Definition wellformed_mem' (rb : RB.t) :=
+  match rb with
+  | None => True
+  | Some r => wellformed_mem r
+  end.
+
+Definition wellformed_apply_instr:
+  forall instr rel,
+    (wellformed_mem rel) ->
+    (wellformed_mem' (apply_instr instr rel)).
+Proof.
+  destruct instr; simpl; auto with wellformed.
+Qed.
+
+Local Transparent kill_reg.
+
 Section SOUNDNESS.
   Variable F V : Type.
   Variable genv: Genv.t F V.
