@@ -72,8 +72,10 @@ Definition wellformed_reg (rel : RELATION.t) : Prop :=
   forall i j sv,
   (var_to_sym rel) ! i = Some sv ->
   kill_sym_val j sv = true ->
-  exists uses, (reg_used rel) ! j = Some uses /\
-               uses ! i = Some tt.
+  match (reg_used rel) ! j with
+  | Some uses => uses ! i = Some tt
+  | None => False
+  end.
 
 Lemma wellformed_mem_top : wellformed_mem RELATION.top.
 Proof.
@@ -134,20 +136,15 @@ Proof.
   destruct (eq_sym_val syma symb); try discriminate.
   subst syma.
   inv COMBINE.
-  assert (exists usesA : pset, (reg_used a) ! j = Some usesA /\ usesA ! i = Some tt) as USESA by auto.
-  assert (exists usesB : pset, (reg_used b) ! j = Some usesB /\ usesB ! i = Some tt) as USESB by auto.
-  destruct USESA as [uA [uA1 uA2]].
-  destruct USESB as [uB [uB1 uB2]].
   rewrite PTree.gcombine_null.
-  rewrite uA1.
-  rewrite uB1.
-  pose proof (PTree.bempty_canon_correct (pset_inter uA uB) i) as EMPTY.
-  destruct PTree.bempty_canon.
+  destruct ((reg_used a) ! j) as [uA| ]; destruct ((reg_used b) ! j) as [uB | ]; auto.
+  { pose proof (PTree.bempty_canon_correct (pset_inter uA uB) i) as EMPTY.
+    destruct PTree.bempty_canon.
   - rewrite gpset_inter_none in EMPTY.
     intuition congruence.
-  - econstructor; split; eauto.
-    rewrite gpset_inter_some.
+  - rewrite gpset_inter_some.
     auto.
+  }
 Qed.
 Local Hint Resolve wellformed_reg_lub : wellformed.
 
