@@ -116,6 +116,19 @@ Module Type TREE.
     forall (m1: t A) (m2: t B) (i: elt),
     get i (combine f m1 m2) = f (get i m1) (get i m2).
 
+  Parameter combine_null :
+    forall (A B C: Type) (f: A -> B -> option C),
+    t A -> t B -> t C.
+
+  Axiom gcombine_null:
+    forall (A B C: Type) (f: A -> B -> option C),
+    forall (m1: t A) (m2: t B) (i: elt),
+      get i (combine_null f m1 m2) =
+      match (get i m1), (get i m2) with
+      | (Some x1), (Some x2) => f x1 x2
+      | _, _ => None
+      end.
+
   (** Enumerating the bindings of a tree. *)
   Parameter elements:
     forall (A: Type), t A -> list (elt * A).
