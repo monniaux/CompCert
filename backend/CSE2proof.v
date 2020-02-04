@@ -258,18 +258,68 @@ Proof.
 Qed.
 Local Hint Resolve wellformed_mem_load : wellformed.
 
-Definition wellformed_mem' (rb : RB.t) :=
+Definition wellformed_mem_rb (rb : RB.t) :=
   match rb with
   | None => True
   | Some r => wellformed_mem r
   end.
 
-Definition wellformed_apply_instr:
+Lemma wellformed_mem_apply_instr:
   forall instr rel,
     (wellformed_mem rel) ->
-    (wellformed_mem' (apply_instr instr rel)).
+    (wellformed_mem_rb (apply_instr instr rel)).
 Proof.
   destruct instr; simpl; auto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_apply_instr : wellformed.
+
+Lemma wellformed_mem_rb_bot :
+  wellformed_mem_rb RB.bot.
+Proof.
+  simpl.
+  trivial.
+Qed.
+Local Hint Resolve wellformed_mem_rb_bot: wellformed.
+
+Lemma wellformed_mem_rb_top :
+  wellformed_mem_rb RB.top.
+Proof.
+  simpl.
+  auto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_rb_top: wellformed.
+
+Lemma wellformed_mem_rb_apply_instr':
+  forall code pc rel,
+    (wellformed_mem_rb rel) ->
+    (wellformed_mem_rb (apply_instr' code pc rel)).
+Proof.
+  destruct rel; simpl; trivial.
+  intro.
+  destruct (code ! pc);
+  eauto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_rb_apply_instr' : wellformed.
+
+Lemma wellformed_mem_rb_lub : forall a b,
+    (wellformed_mem_rb a) -> (wellformed_mem_rb b) -> (wellformed_mem_rb (RB.lub a b)).
+Proof.
+  destruct a; destruct b; simpl; auto with wellformed.
+Qed.
+Local Hint Resolve wellformed_mem_rb_lub: wellformed.
+
+Definition wellformed_mem_fmap fmap :=
+  forall i, wellformed_mem_rb (fmap !! i).
+
+Theorem wellformed_mem_forward_map : forall f,
+    forall fmap, (forward_map f) = Some fmap ->
+    wellformed_mem_fmap fmap.
+Proof.
+  intros.
+  unfold forward_map in *.
+  unfold wellformed_mem_fmap.
+  intro.
+  eapply DS.fixpoint_invariant with (ev := Some RELATION.top); eauto with wellformed.
 Qed.
 
 Local Transparent kill_reg.

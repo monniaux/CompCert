@@ -268,6 +268,8 @@ Module ADD_BOTTOM(L : SEMILATTICE_WITHOUT_BOTTOM).
     - apply L.ge_refl.
       apply L.eq_refl.
   Qed.
+
+  Definition top := Some RELATION.top.
 End ADD_BOTTOM.
 
 Module RB := ADD_BOTTOM(RELATION).
@@ -441,7 +443,7 @@ Definition apply_instr' code (pc : node) (ro : RB.t) : RB.t :=
 
 Definition forward_map (f : RTL.function) := DS.fixpoint
   (RTL.fn_code f) RTL.successors_instr
-  (apply_instr' (RTL.fn_code f)) (RTL.fn_entrypoint f) (Some RELATION.top).
+  (apply_instr' (RTL.fn_code f)) (RTL.fn_entrypoint f) RB.top.
 
 Definition forward_move_b (rb : RB.t) (x : reg) :=
   match rb with
