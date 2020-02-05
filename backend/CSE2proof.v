@@ -317,14 +317,9 @@ Proof.
   specialize Hrel with (i := i) (j := j) (sv := sv).
   destruct ((var_to_sym rel) ! dst) eqn:DST; simpl.
   {
-    destruct (in_or_not j (referenced_by s)).
-    { assert (dst <> i) by eauto with wellformed.
-      apply remove_from_sets_pass.
-      congruence.
-      rewrite PTree.gro by congruence.
-      apply Hrel; trivial.
-    }
-    rewrite remove_from_sets_notin by assumption.
+    assert (dst <> i) by eauto with wellformed.
+    apply remove_from_sets_pass.
+    congruence.
     rewrite PTree.gro by congruence.
     apply Hrel; trivial.
   }
