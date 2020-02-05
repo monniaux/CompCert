@@ -202,7 +202,136 @@ Proof.
       destruct peq; trivial.
       congruence.
 Qed.
+Local Hint Resolve kill_sym_val_referenced : wellformed.
 
+Lemma in_or_not:
+  forall (x : reg) l,
+    (In x l) \/ ~(In x l).
+Admitted.
+
+Lemma remove_from_sets_notin:
+  forall dst l sets j,
+    not (In j l) ->
+    (remove_from_sets dst l sets) ! j = sets ! j.
+Proof.
+  induction l; simpl; trivial.
+  intros.
+  rewrite IHl by tauto.
+  destruct (@PTree.get (PTree.t unit) a sets) eqn:SETSA; trivial.
+  pose proof (PTree.bempty_canon_correct (PTree.remove dst t)) as CORRECT.
+  destruct (PTree.bempty_canon (PTree.remove dst t)).
+  - apply PTree.gro.
+    intuition.
+  - rewrite PTree.gso by intuition.
+    trivial.
+Qed.
+
+Lemma remove_from_sets_pass:
+  forall dst l sets i j,
+    i <> dst ->
+    match sets ! j with
+    | Some uses => uses ! i = Some tt
+    | None => False
+    end ->
+    match (remove_from_sets dst l sets) ! j with
+    | Some uses => uses ! i = Some tt
+    | None => False
+    end.
+Proof.
+  induction l; simpl; trivial.
+  intros.
+  apply IHl; trivial.
+  destruct (@PTree.get (PTree.t unit) a sets) eqn:SETSA; trivial.
+  pose proof (PTree.bempty_canon_correct (PTree.remove dst t)) as CORRECT.
+  specialize CORRECT with (i := i).
+  destruct (PTree.bempty_canon (PTree.remove dst t)).
+  - rewrite PTree.gro in CORRECT by congruence.
+    destruct (peq a j).
+    + subst a.
+      rewrite SETSA in *.
+      intuition congruence.
+    + rewrite PTree.gro by congruence.
+      assumption.
+  - destruct (peq a j).
+    + subst a.
+      rewrite SETSA in *.
+      rewrite PTree.gss.
+      rewrite PTree.gro by congruence.
+      assumption.
+    + rewrite PTree.gso by congruence.
+      assumption.
+Qed.
+Local Hint Resolve remove_from_sets_pass : wellformed.
+
+Lemma rem_comes_from:
+  forall A x y (tr: PTree.t A) v,
+    (PTree.remove x tr) ! y = Some v -> tr ! y = Some v.
+Proof.
+  intros.
+  destruct (peq x y).
+  - subst y.
+    rewrite PTree.grs in *.
+    discriminate.
+  - rewrite PTree.gro in * by congruence.
+    assumption.
+Qed.
+Local Hint Resolve rem_comes_from : wellformed.
+
+Lemma rem_ineq:
+  forall A x y (tr: PTree.t A) v,
+    (PTree.remove x tr) ! y = Some v -> x<>y.
+Proof.
+  intros.
+  intro.
+  subst y.
+  rewrite PTree.grs in *.
+  discriminate.
+Qed.
+Local Hint Resolve rem_ineq : wellformed.
+
+Lemma wellformed_reg_kill_reg:
+  forall dst rel,
+    (wellformed_reg rel) -> (wellformed_reg (kill_reg dst rel)).
+Proof.
+  unfold wellformed_reg, kill_reg.
+  simpl.
+  intros dst rel Hrel.
+  intros i j sv KILLREG KILLABLE.
+
+  rewrite PTree.gfilter1 in KILLREG.
+  destruct PTree.get eqn:REMi in KILLREG.
+  2: discriminate.
+  destruct negb eqn:NEGB in KILLREG.
+  2: discriminate.
+  inv KILLREG.
+
+  assert ((var_to_sym rel) ! i = Some sv) as RELi by eauto with wellformed.
+  
+  destruct (peq dst j).
+  { (* absurd case *)
+    subst j.
+    rewrite KILLABLE in NEGB.
+    simpl in NEGB.
+    discriminate.
+  }
+  specialize Hrel with (i := i) (j := j) (sv := sv).
+  destruct ((var_to_sym rel) ! dst) eqn:DST; simpl.
+  {
+    destruct (in_or_not j (referenced_by s)).
+    { assert (dst <> i) by eauto with wellformed.
+      apply remove_from_sets_pass.
+      congruence.
+      rewrite PTree.gro by congruence.
+      apply Hrel; trivial.
+    }
+    rewrite remove_from_sets_notin by assumption.
+    rewrite PTree.gro by congruence.
+    apply Hrel; trivial.
+  }
+  rewrite PTree.gro by congruence.
+  apply Hrel; trivial.
+Qed.
+  
 Lemma wellformed_mem_kill_mem:
   forall rel,
     (wellformed_mem rel) -> (wellformed_mem (kill_mem rel)).
