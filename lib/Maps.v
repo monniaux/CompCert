@@ -164,6 +164,12 @@ Module Type TREE.
     forall (A B: Type) (f: B -> A -> B) (v: B) (m: t A),
     fold1 f m v =
     List.fold_left (fun a p => f a (snd p)) (elements m) v.
+
+  Parameter bempty_canon :
+    forall (A : Type), t A -> bool.
+  Axiom bempty_canon_correct:
+    forall (A : Type) (tr : t A) (i : elt),
+      bempty_canon tr = true -> get i tr = None.
 End TREE.
 
 (** * The abstract signatures of maps *)
@@ -274,6 +280,12 @@ Module PTree <: TREE.
     induction i; simpl; auto.
   Qed.
 
+  Definition bempty_canon (A : Type) (tr : t A) : bool :=
+    match tr with
+    | Leaf => true
+    | _ => false
+    end.
+
   Theorem gss:
     forall (A: Type) (i: positive) (x: A) (m: t A), get i (set i x m) = Some x.
   Proof.
@@ -282,7 +294,16 @@ Module PTree <: TREE.
 
     Lemma gleaf : forall (A : Type) (i : positive), get i (Leaf : t A) = None.
     Proof. exact gempty. Qed.
-
+    
+  Lemma bempty_canon_correct:
+    forall (A : Type) (tr : t A) (i : elt),
+      bempty_canon tr = true -> get i tr = None.
+  Proof.
+    destruct tr; intros.
+    - rewrite gleaf; trivial.
+    - discriminate.
+  Qed.
+  
   Theorem gso:
     forall (A: Type) (i j: positive) (x: A) (m: t A),
     i <> j -> get i (set j x m) = get i m.
@@ -1045,6 +1066,104 @@ Module PTree <: TREE.
     intros. apply fold1_xelements with (l := @nil (positive * A)).
   Qed.
 
+  (* DM
+  Fixpoint xfind_any (A : Type) (P : elt -> A -> bool) (i : elt) (m : t A):
+    option elt :=
+    match m with
+    | Leaf => None
+    | Node l None r =>
+      match xfind_any P (xO i) l with
+      | None => xfind_any P (xI i) r
+      | r => r
+      end
+    | Node l (Some x) r =>
+      if P i x
+      then Some i
+      else
+        match xfind_any P (xO i) l with
+        | None => xfind_any P (xI i) r
+        | r => r
+        end
+    end.
+
+  Definition find_any (A : Type) (P : elt -> A -> bool) (m : t A) :=
+    xfind_any P xH m.
+
+  Fixpoint pos_concat (i : positive) (j : positive) :=
+    match i with
+    | xI r => xI (pos_concat r j)
+    | xO r => xO (pos_concat r j)
+    | xH => j
+    end.
+
+  Lemma pos_concat_assoc :
+    forall i j k,
+      (pos_concat (pos_concat i j) k) = (pos_concat i (pos_concat j k)).
+  Admitted.
+
+  Lemma pos_concat_eq_l : forall i j,
+      (pos_concat i j) = i -> j = xH.
+  Proof.
+    induction i; simpl; intros j EQ.
+    - inv EQ. auto.
+    - inv EQ. auto.
+    - trivial.
+  Qed.
+  
+  Lemma pos_concat_eq_r : forall i j,
+      (pos_concat i j) = j -> i = xH.
+  Admitted.
+
+  Local Hint Resolve pos_concat_eq_r : trees.
+  
+  Lemma pos_concat_xH_r: forall i, (pos_concat i xH) = i.
+  Proof.
+    induction i; simpl; try rewrite IHi; trivial.
+  Qed.
+  
+  Local Hint Resolve pos_concat_xH_r : trees.
+
+  (*
+  Fixpoint pos_is_prefix (i j : elt) :=
+    match i, j with
+    | xI i1, xI j1 => pos_is_prefix i1 j1
+    | xO i1, xO j1 => pos_is_prefix i1 j1
+    | xH, _ => true
+    | _, _ => false
+    end.
+   *)
+  
+  Lemma xfind_any_correct:
+    forall A P (m : t A) i k,
+      xfind_any P i m = Some k -> exists j v, k = pos_concat j i
+         /\ (get j m)=Some v /\ (P k v)=true.
+  Proof.
+    induction m; simpl.
+    { (* leaf *)
+      discriminate.
+    }
+    intros i k FOUND.
+    destruct o.
+    { destruct P eqn:Pval in FOUND.
+      { inv FOUND.
+        exists xH. exists a.
+        simpl.
+        eauto.
+      }
+      specialize IHm1 with (i := xO i) (k := k).
+      specialize IHm2 with (i := xI i) (k := k).
+      assert (Some k = Some k) as SK by trivial.
+      destruct (xfind_any P (xO i) m1).
+      {
+        inv FOUND.
+        destruct (IHm1 SK) as [j' [v [EQk [GET PP]]]].
+        exists (pos_concat j' (xO xH)). exists v.
+        rewrite pos_concat_assoc.
+        simpl.
+        split; trivial.
+        split; trivial.
+    }
+   *)
 End PTree.
 
 (** * An implementation of maps over type [positive] *)

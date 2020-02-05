@@ -41,7 +41,8 @@ Definition pset_remove (i : positive) (s : pset) := PTree.remove i s.
 
 Record relmap := mkrel {
    var_to_sym : PTree.t sym_val ;
-   mem_used : pset
+   mem_used : pset ;
+   reg_used : PTree.t pset
  }.
 
 Module RELATION.
@@ -51,7 +52,7 @@ Definition t := relmap.
 Definition eq (r1 r2 : t) :=
   forall x, (PTree.get x (var_to_sym r1)) = (PTree.get x (var_to_sym r2)).
 
-Definition top : t := mkrel (PTree.empty sym_val) pset_empty.
+Definition top : t := mkrel (PTree.empty sym_val) pset_empty (PTree.empty pset).
 
 Lemma eq_refl: forall x, eq x x.
 Proof.
@@ -131,7 +132,13 @@ Definition lub (r1 r2 : t) :=
        | _, None => None
        end)
     (var_to_sym r1) (var_to_sym r2))
-  (pset_inter (mem_used r1) (mem_used r2)).
+  (pset_inter (mem_used r1) (mem_used r2))
+  (PTree.combine_null
+     (fun x y => let r := pset_inter x y in
+                 if PTree.bempty_canon r
+                 then None
+                 else Some r)
+     (reg_used r1) (reg_used r2)).
 
 Lemma ge_lub_left: forall x y, ge (lub x y) x.
 Proof.
@@ -275,17 +282,46 @@ End ADD_BOTTOM.
 Module RB := ADD_BOTTOM(RELATION).
 Module DS := Dataflow_Solver(RB)(NodeSetForward).
 
-Definition kill_sym_val (dst : reg) (sv : sym_val) :=
+Definition kill_sym_val (dst : reg) (sv : sym_val) : bool :=
   match sv with
   | SMove src => if peq dst src then true else false
   | SOp op args => List.existsb (peq dst) args
   | SLoad chunk addr args => List.existsb (peq dst) args
   end.
-                                                 
+
+Definition referenced_by sv :=
+  match sv with
+  | SMove src => src :: nil
+  | SOp op args => args
+  | SLoad chunk addr args => args
+  end.
+           
+Definition referenced_by' osv :=
+  match osv with
+  | None => nil
+  | Some sv => referenced_by sv
+  end.
+
+Definition remove_from_sets
+           (to_remove : reg) :
+           list reg -> PTree.t pset -> PTree.t pset :=
+  List.fold_left
+    (fun sets reg =>
+       match PTree.get reg sets with
+       | None => sets
+       | Some xset =>
+         let xset' := PTree.remove to_remove xset in
+         if PTree.bempty_canon xset'
+         then PTree.remove reg sets
+         else PTree.set reg xset' sets
+       end).
+
 Definition kill_reg (dst : reg) (rel : RELATION.t) : RELATION.t :=
-  mkrel (PTree.filter1 (fun x => negb (kill_sym_val dst x))
-                       (PTree.remove dst (var_to_sym rel)))
-        (pset_remove dst (mem_used rel)).
+  let rel' := PTree.remove dst (var_to_sym rel) in
+  mkrel (PTree.filter1 (fun x => negb (kill_sym_val dst x)) rel')
+        (pset_remove dst (mem_used rel))
+        (remove_from_sets dst (referenced_by' (PTree.get dst (var_to_sym rel)))
+                          (PTree.remove dst (reg_used rel))).
 
 Definition kill_sym_val_mem (sv: sym_val) :=
   match sv with
@@ -297,7 +333,8 @@ Definition kill_sym_val_mem (sv: sym_val) :=
 Definition kill_mem (rel : RELATION.t) :=
   mkrel
     (PTree.remove_t (var_to_sym rel) (mem_used rel))
-    pset_empty.
+    pset_empty
+    (reg_used rel). (* FIXME *)
 
 
 Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
@@ -309,7 +346,8 @@ Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
 Definition move (src dst : reg) (rel : RELATION.t) :=
   let rel0 := kill_reg dst rel in
   mkrel (PTree.set dst (SMove (forward_move rel src)) (var_to_sym rel0))
-        (mem_used rel0).
+        (mem_used rel0)
+        (reg_used rel0). (* FIXME *)
 
 Definition find_op_fold op args (already : option reg) x sv :=
                 match already with
@@ -350,7 +388,8 @@ Definition oper2 (op: operation) (dst : reg) (args : list reg)
   let rel' := kill_reg dst rel in
   mkrel (PTree.set dst (SOp op (List.map (forward_move rel') args)) (var_to_sym rel'))
         (if op_depends_on_memory op then (pset_add dst (mem_used rel'))
-         else mem_used rel').
+         else mem_used rel')
+        (reg_used rel'). (* FIXME *)
 
 Definition oper1 (op: operation) (dst : reg) (args : list reg)
            (rel : RELATION.t) : RELATION.t :=
@@ -376,7 +415,8 @@ Definition load2 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) : RELATION.t :=
   let rel' := kill_reg dst rel in
   mkrel (PTree.set dst (SLoad chunk addr (List.map (forward_move rel') args)) (var_to_sym rel'))
-        (pset_add dst (mem_used rel')).
+        (pset_add dst (mem_used rel'))
+        (reg_used rel'). (* FIXME *)
 
 Definition load1 (chunk: memory_chunk) (addr : addressing)
            (dst : reg) (args : list reg) (rel : RELATION.t) :=

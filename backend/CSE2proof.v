@@ -171,6 +171,38 @@ Proof.
 Qed.
 Local Hint Resolve wellformed_mem_kill_reg : wellformed.
 
+Lemma kill_sym_val_referenced:
+  forall dst,
+  forall sv,
+    (kill_sym_val dst sv)=true <-> In dst (referenced_by sv).
+Proof.
+  intros.
+  destruct sv; simpl.
+  - destruct peq; intuition congruence.
+  - rewrite existsb_exists.
+    split.
+    + intros [x [IN EQ]].
+      destruct peq.
+      * subst x; trivial.
+      * discriminate.
+    + intro.
+      exists dst.
+      split; trivial.
+      destruct peq; trivial.
+      congruence.
+  - rewrite existsb_exists.
+    split.
+    + intros [x [IN EQ]].
+      destruct peq.
+      * subst x; trivial.
+      * discriminate.
+    + intro.
+      exists dst.
+      split; trivial.
+      destruct peq; trivial.
+      congruence.
+Qed.
+
 Lemma wellformed_mem_kill_mem:
   forall rel,
     (wellformed_mem rel) -> (wellformed_mem (kill_mem rel)).
