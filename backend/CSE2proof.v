@@ -321,7 +321,8 @@ Proof.
   rewrite PTree.gro by congruence.
   apply Hrel; trivial.
 Qed.
-  
+Local Hint Resolve wellformed_reg_kill_reg : wellformed.
+
 Lemma wellformed_mem_kill_mem:
   forall rel,
     (wellformed_mem rel) -> (wellformed_mem (kill_mem rel)).
@@ -342,6 +343,21 @@ Proof.
  - destruct ((mem_used rel) ! i); discriminate.
 Qed.
 Local Hint Resolve wellformed_mem_kill_mem : wellformed.
+
+Lemma wellformed_reg_kill_mem:
+  forall rel,
+    (wellformed_reg rel) -> (wellformed_reg (kill_mem rel)).
+Proof.
+  unfold wellformed_reg, kill_mem.
+  simpl.
+  intros rel Hrel.
+  intros i j sv KILLMEM KILLABLE.
+  apply Hrel with (sv := sv); trivial.
+  rewrite PTree.gremove_t in KILLMEM.
+  destruct ((mem_used rel) ! i) in KILLMEM.
+  discriminate.
+  assumption.
+Qed.
 
 Lemma wellformed_mem_move:
   forall r dst rel,
