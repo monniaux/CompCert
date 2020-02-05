@@ -358,6 +358,7 @@ Proof.
   discriminate.
   assumption.
 Qed.
+Local Hint Resolve wellformed_reg_kill_mem : wellformed.
 
 Lemma wellformed_mem_move:
   forall r dst rel,
