@@ -204,11 +204,6 @@ Proof.
 Qed.
 Local Hint Resolve kill_sym_val_referenced : wellformed.
 
-Lemma in_or_not:
-  forall (x : reg) l,
-    (In x l) \/ ~(In x l).
-Admitted.
-
 Lemma remove_from_sets_notin:
   forall dst l sets j,
     not (In j l) ->
