@@ -53,7 +53,7 @@ Ltac revert_arith :=
     ) ; clear ; intros.
 
 Ltac lia := 
-  (try revert_arith) ; zify ; unfold Zsucc in * ; Psatz.lia.
+  (try revert_arith) ; zify ; unfold Z.succ in * ; Psatz.lia.
 
 (* To be used when building error messages *)
 (* Eval compute in (Ascii false false false false true true false false). *)

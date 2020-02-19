@@ -21,11 +21,11 @@ else
 ARCHDIRS=$(ARCH)_$(BITSIZE) $(ARCH)
 endif
 
-DIRS=lib common $(ARCHDIRS) backend cfrontend driver \
+DIRS=lib common $(ARCHDIRS) backend midend midend/libSSA cfrontend driver \
   flocq/Core flocq/Prop flocq/Calc flocq/IEEE754 \
   exportclight MenhirLib cparser
 
-RECDIRS=lib common $(ARCHDIRS) backend cfrontend driver flocq exportclight \
+RECDIRS=lib common $(ARCHDIRS) backend midend cfrontend driver flocq exportclight \
   MenhirLib cparser
 
 COQINCLUDES=$(foreach d, $(RECDIRS), -R $(d) compcert.$(d))

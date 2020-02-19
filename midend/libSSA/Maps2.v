@@ -411,6 +411,13 @@ Module MakeProdTree (M1:TREE) (M2:TREE) <: TREE.
         subst. subst. auto.
   Qed.
 
+  Theorem elements_extensional:
+    forall (A: Type) (m n: t A),
+    (forall i, get i m = get i n) ->
+    elements m = elements n.
+  Proof.
+  Admitted.
+  
   Definition fold (A B: Type) (f: B -> elt -> A -> B) (m: t A) (b:B) : B :=
     M1.fold
       (fun acc x1 m1 => M2.fold (fun acc x2 a => f acc (x1, x2) a) m1 acc) m b.
@@ -451,6 +458,12 @@ Module MakeProdTree (M1:TREE) (M2:TREE) <: TREE.
     intros. rewrite <- IHl0. simpl. auto.
   Qed.
 
+  Theorem elements_remove:
+    forall (A: Type) i v (m: t A),
+    get i m = Some v ->
+    exists l1 l2, elements m = l1 ++ (i,v) :: l2 /\ elements (remove i m) = l1 ++ l2.
+  Proof.
+  Admitted.
 End MakeProdTree.
 
 Module  MakeProdMap (M1:MAP) (M2:MAP) <: MAP.

@@ -64,14 +64,12 @@ Module Type TREE.
   Axiom gsspec:
     forall (A: Type) (i j: elt) (x: A) (m: t A),
     get i (set j x m) = if elt_eq i j then Some x else get i m.
-  (* We could implement the following, but it's not needed for the moment.
-  Hypothesis gsident:
+  Axiom gsident:
     forall (A: Type) (i: elt) (m: t A) (v: A),
     get i m = Some v -> set i v m = m.
-  Hypothesis grident:
+  (* Axiom grident:
     forall (A: Type) (i: elt) (m: t A) (v: A),
-    get i m = None -> remove i m = m.
-  *)
+    get i m = None -> remove i m = m. *)
   Axiom grs:
     forall (A: Type) (i: elt) (m: t A), get i (remove i m) = None.
   Axiom gro:
@@ -115,6 +113,11 @@ Module Type TREE.
     f None None = None ->
     forall (m1: t A) (m2: t B) (i: elt),
     get i (combine f m1 m2) = f (get i m1) (get i m2).
+  Axiom combine_commut:
+    forall (A B: Type) (f g: option A -> option A -> option B),
+    (forall (i j: option A), f i j = g j i) ->
+    forall (m1 m2: t A),
+    combine f m1 m2 = combine g m2 m1.
 
   (** Enumerating the bindings of a tree. *)
   Parameter elements:
@@ -1551,6 +1554,44 @@ Qed.
 
 End BOOLEAN_EQUALITY.
 
+
+    Fixpoint append (i j : positive) {struct i} : positive :=
+      match i with
+      | xH => j
+      | xI ii => xI (append ii j)
+      | xO ii => xO (append ii j)
+      end.
+
+    Lemma append_assoc_0 : forall (i j : positive),
+                           append i (xO j) = append (append i (xO xH)) j.
+    Proof.
+      induction i; intros; destruct j; simpl;
+      try rewrite (IHi (xI j));
+      try rewrite (IHi (xO j));
+      try rewrite <- (IHi xH);
+      auto.
+    Qed.
+
+    Lemma append_assoc_1 : forall (i j : positive),
+                           append i (xI j) = append (append i (xI xH)) j.
+    Proof.
+      induction i; intros; destruct j; simpl;
+      try rewrite (IHi (xI j));
+      try rewrite (IHi (xO j));
+      try rewrite <- (IHi xH);
+      auto.
+    Qed.
+
+    Lemma append_neutral_r : forall (i : positive), append i xH = i.
+    Proof.
+      induction i; simpl; congruence.
+    Qed.
+
+    Lemma append_neutral_l : forall (i : positive), append xH i = i.
+    Proof.
+      simpl; auto.
+    Qed.
+
 (** Extensional equality between trees *)
 
 Section EXTENSIONAL_EQUALITY.
@@ -1719,6 +1760,16 @@ Proof.
     constructor; auto.
     auto. }
   intros. apply REC; auto. rewrite ! T.gempty. constructor.
+Qed.
+
+
+Remark list_norepet_map:
+  forall (A B: Type) (f: A -> B) (l: list A),
+  list_norepet (List.map f l) -> list_norepet l.
+Proof.
+  induction l; simpl; intros.
+  constructor.
+  inv H. constructor; auto. red; intros; elim H2. apply List.in_map; auto.
 Qed.
 
 End Tree_Properties.
