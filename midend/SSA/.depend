@@ -1,0 +1,14 @@
+ptset.cmi: 
+ptmap.cmi: 
+dominator.cmi: 
+dominance.cmi: ptset.cmi 
+ptset.cmo: ptset.cmi 
+ptset.cmx: ptset.cmi 
+ptmap.cmo: ptmap.cmi 
+ptmap.cmx: ptmap.cmi 
+dominator.cmo: ptset.cmi dominator.cmi 
+dominator.cmx: ptset.cmx dominator.cmi 
+dominance.cmo: ptset.cmi dominance.cmi 
+dominance.cmx: ptset.cmx dominance.cmi 
+SSAgen.cmo: ptset.cmi ptmap.cmi dominator.cmi dominance.cmi SSAgen.cmi 
+SSAgen.cmx: ptset.cmx ptmap.cmx dominator.cmx dominance.cmx SSAgen.cmi 

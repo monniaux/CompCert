@@ -96,6 +96,24 @@ BACKEND=\
   Bounds.v Stacklayout.v Stacking.v Stackingproof.v \
   Asm.v Asmgen.v Asmgenproof0.v Asmgenproof1.v Asmgenproof.v
 
+
+# Middle-end modules (in backend/, backend/SSA, $(LIB)/)
+MIDEND=\
+  DLib.v Bijection.v \
+  SSA.v SSAutils.v SSAvalid.v SSAvalidspec.v \
+  SSAtool.v SSAtoolinv.v SSAtoolproof.v \
+  Utilsvalidproof.v SSAvalidproof.v SSAvalidprop.v SSAvalidator_proof.v \
+  RTLnorm.v RTLnormspec.v RTLnormproof.v \
+  RTLdfs.v RTLdfsproof.v \
+  RTLutils.v LightLive.v KildallComp.v \
+  Path.v Dom.v DomCompute.v DomTest.v \
+  SSAgen.v Compo.v SSAgenproof.v \
+  Dsd.v \
+  Opt.v OptInv.v \
+  ConstpropOpproofSSA.v SCCPopt.v SCCPoptProp.v SCCPoptproof.v \
+  GVNopt.v GVNoptproof.v GVNoptProp.v \
+  DeSSA.v DeSSAspec.v DeSSAproof.v
+
 # C front-end modules (in cfrontend/)
 
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
@@ -121,7 +139,7 @@ DRIVER=Compopts.v Compiler.v Complements.v
 
 # All source files
 
-FILES=$(VLIB) $(COMMON) $(BACKEND) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
+FILES=$(VLIB) $(COMMON) $(BACKEND) $(MIDEND) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
   $(MENHIRLIB) $(PARSER)
 
 # Generated source files
