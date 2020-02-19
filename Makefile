@@ -281,6 +281,7 @@ clean:
 	rm -rf doc/html doc/*.glob
 	rm -f driver/Version.ml
 	rm -f compcert.ini
+	rm -f midend/SSA/*.cmi midend/SSA/*.cmo midend/SSA/*.annot
 	rm -f extraction/STAMP extraction/*.ml extraction/*.mli .depend.extr
 	rm -f tools/ndfun tools/modorder tools/*.cm? tools/*.o
 	rm -f $(GENERATED) .depend

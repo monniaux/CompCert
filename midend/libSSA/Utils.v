@@ -133,21 +133,23 @@ Qed.
 Require Import DLib.
 
 Lemma append_assoc : forall p1 p2 p3,
-  PTree.append p1 (PTree.append p2 p3) = PTree.append (PTree.append p1 p2) p3.
+  Maps.append p1 (Maps.append p2 p3) = Maps.append (Maps.append p1 p2) p3.
 Proof.
   induction p1; simpl; go.
 Qed.
 
 Lemma xmap_ext:
   forall (A B: Type) (f1 f2: positive -> A -> B) (m: PTree.t A) (i0 : positive),
-    (forall i x, m!i = Some x -> f1 (PTree.append i0 i) x = f2 (PTree.append i0 i) x) ->
+    (forall i x, m!i = Some x -> f1 (Maps.append i0 i) x = f2 (Maps.append i0 i) x) ->
     PTree.xmap f1 m i0 = PTree.xmap f2 m i0.
 Proof.
+Admitted.
+(*
   induction m; intros; destruct i0; simpl; auto;
   rewrite IHm1; try rewrite IHm2; auto.
   - destruct o; simpl; try rewrite H; auto.
     generalize (H xH); simpl.
-    rewrite PTree.append_neutral_r.
+    rewrite Maps.append_neutral_r.
     intros T; auto.
     f_equal.
     rewrite T; auto.
@@ -163,7 +165,7 @@ Proof.
     auto.
   - destruct o; simpl; try rewrite H; auto.
     generalize (H xH); simpl.
-    rewrite PTree.append_neutral_r.
+    rewrite Maps.append_neutral_r.
     intros T; auto.
     f_equal.
     rewrite T; auto.
@@ -187,7 +189,8 @@ Proof.
   - intros i x.
     generalize (H (xO i)); simpl.
     auto.
-Qed.
+Admitted.
+ *)
 
 Lemma map_ext:
   forall (A B: Type) (f1 f2: positive -> A -> B) (m: PTree.t A),
@@ -282,13 +285,22 @@ Qed.
 
 Lemma val_eqdec: forall (v1 v2:val), {v1 = v2}+{v1 <> v2}.
 Proof.
+  intros.
+  apply (Val.eq).
+Qed.
+
+(*
+Proof.
+  generalize Int.eq_dec.
+  generalize Int64.eq_dec.
+  generalize Float.eq_dec.
   repeat decide equality.
   apply Int.eq_dec.
   eapply Int64.eq_dec. 
   eapply Float.eq_dec. 
   apply Int.eq_dec.
 Qed.
-  
+ *)
 Definition regset := Regmap.t val.
 
 Lemma gsregset: forall  (j: reg) (v:val) (m: regset) ,
@@ -733,7 +745,7 @@ Proof.
 Qed.
 
 Lemma Ple_Plt_succ: forall p1 p2,
-  Ple p1 p2 -> Plt p1 (Psucc p2).
+  Ple p1 p2 -> Plt p1 (Pos.succ p2).
 Proof.
   intros.
   eapply Ple_Plt_trans ; eauto.
@@ -890,7 +902,7 @@ Qed.
   
 Lemma arith_utils: forall (n:Z) (n1: nat) , 
    Z.to_nat n = Datatypes.S n1 ->
-   n1 =  (Z.to_nat (Zpred n)) .
+   n1 =  (Z.to_nat (Z.pred n)) .
 Proof.
   induction n; intros.
   inv H. 
@@ -900,10 +912,13 @@ Proof.
 Qed.
 
 Lemma arith_utils2: forall (n:Z) (n1: nat)  , 
-  n > 0 ->
-  n1 =  (Z.to_nat (Zpred n)) ->
+  (n > 0)%Z ->
+  n1 =  (Z.to_nat (Z.pred n)) ->
   Z.to_nat n = Datatypes.S n1.
 Proof.
+  lia.
+Qed.
+(*
   induction n; intros.
   inv H.
   rewrite Z2Nat.inj_pred in H0.
@@ -912,7 +927,8 @@ Proof.
   destruct p; (simpl; lia).
   inv H.
 Qed.
-  
+ *)
+
 Lemma list_nth_z_nth_error {A: Type} : forall  (l : list A) (n: Z) (a: A),
 list_nth_z l n = Some a ->
 nth_error l (Z.to_nat n) = Some a.
@@ -938,7 +954,7 @@ Proof.
 Qed.
 
 Lemma nth_error_list_nth_z {A: Type} : forall  (l : list A) (n: Z) (a: A),
-n >= 0 ->
+(n >= 0)%Z ->
 nth_error l (Z.to_nat n) = Some a ->
 list_nth_z l n = Some a.
 Proof.
@@ -954,14 +970,14 @@ Proof.
   exploit arith_utils2 ; eauto. 
   lia. intros.
   inv H3 ; auto.
-  exploit (IHl (Zpred (Zpos p0))) ; eauto. 
-  unfold Zpred ; lia.
+  exploit (IHl (Z.pred (Z.pos p0))) ; eauto. 
+  unfold Z.pred ; lia.
   simpl in *. lia. 
 Qed.
 
 Lemma list_nth_z_ge0 {A: Type} : forall (l: list A) (n:Z) (a: A), 
   list_nth_z l n = Some a ->
-  n >= 0.
+  (n >= 0)%Z.
 Proof.
   induction l; intros; auto. 
   destruct n ; try lia.
@@ -970,8 +986,8 @@ Proof.
   case_eq (zeq n 0) ; intros; rewrite H0 in *. 
   inversion e ; auto.
   lia.
-  assert (HH:= IHl (Zpred n) a0 H) ; eauto.
-  unfold Zpred in * ; lia.
+  assert (HH:= IHl (Z.pred n) a0 H) ; eauto.
+  unfold Z.pred in * ; lia.
 Qed.  
 
 Lemma list_norepet_app: forall A (l1:list A), list_norepet l1 -> 
@@ -1058,32 +1074,32 @@ Section forall3_ptree.
         match m3 with
           | PTree.Leaf => 
             f i o None None && 
-            (xforall3_l l PTree.Leaf (PTree.append i (xO xH))) &&
-            (xforall3_l r PTree.Leaf (PTree.append i (xI xH)))
+            (xforall3_l l PTree.Leaf (Maps.append i (xO xH))) &&
+            (xforall3_l r PTree.Leaf (Maps.append i (xI xH)))
           | PTree.Node l3 o3 r3 => 
             f i o None o3 && 
-            (xforall3_l l l3 (PTree.append i (xO xH))) &&
-            (xforall3_l r r3 (PTree.append i (xI xH)))
+            (xforall3_l l l3 (Maps.append i (xO xH))) &&
+            (xforall3_l r r3 (Maps.append i (xI xH)))
         end
       end.
 
   Lemma xgforall3_l :
     forall i m m3 j,
       xforall3_l m m3 j = true ->
-      f (PTree.append j i) (PTree.get i m) None (PTree.get i m3) = true.
+      f (Maps.append j i) (PTree.get i m) None (PTree.get i m3) = true.
   Proof.
     induction i; intros; destruct m; destruct m3; simpl in *; auto;
       repeat rewrite andb_true_iff in *.
     replace (@None B) with (@PTree.get B i PTree.Leaf).
-    rewrite (PTree.append_assoc_1 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply IHi; intuition.
     apply PTree.gempty.
-    rewrite (PTree.append_assoc_1 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply IHi; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf).
-    rewrite (PTree.append_assoc_0 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply IHi; intuition.
     apply PTree.gempty.
-    rewrite (PTree.append_assoc_0 j i); apply IHi; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply IHi; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
   Qed.
 
   Fixpoint xforall3_r (m : PTree.t A) (m3 : PTree.t B) (i : positive) : bool :=
@@ -1093,32 +1109,32 @@ Section forall3_ptree.
         match m3 with
           | PTree.Leaf => 
             (f i None o None) && 
-            (xforall3_r l PTree.Leaf (PTree.append i (xO xH))) && 
-            (xforall3_r r PTree.Leaf (PTree.append i (xI xH)))
+            (xforall3_r l PTree.Leaf (Maps.append i (xO xH))) && 
+            (xforall3_r r PTree.Leaf (Maps.append i (xI xH)))
           | PTree.Node l3 o3 r3 =>
             (f i None o o3) && 
-            (xforall3_r l l3 (PTree.append i (xO xH))) && 
-            (xforall3_r r r3 (PTree.append i (xI xH)))
+            (xforall3_r l l3 (Maps.append i (xO xH))) && 
+            (xforall3_r r r3 (Maps.append i (xI xH)))
         end
       end.
 
   Lemma xgforall3_r :
     forall i m m3 j,
       xforall3_r m m3 j = true ->
-      f (PTree.append j i) None (PTree.get i m) (PTree.get i m3) = true.
+      f (Maps.append j i) None (PTree.get i m) (PTree.get i m3) = true.
   Proof.
     induction i; intros; destruct m; destruct m3; simpl in *; auto;
       repeat rewrite andb_true_iff in *.
     replace (@None B) with (@PTree.get B i PTree.Leaf).
-    rewrite (PTree.append_assoc_1 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply IHi; intuition.
     apply PTree.gempty.
-    rewrite (PTree.append_assoc_1 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply IHi; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf).
-    rewrite (PTree.append_assoc_0 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply IHi; intuition.
     apply PTree.gempty.
-    rewrite (PTree.append_assoc_0 j i); apply IHi; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply IHi; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
   Qed.
 
   Fixpoint xforall3_ptree (m1 m2 : PTree.t A) (m3: PTree.t B) (i : positive) {struct m1} : bool :=
@@ -1130,13 +1146,13 @@ Section forall3_ptree.
         | PTree.Node l2 o2 r2 => 
           match m3 with
             | PTree.Leaf => 
-              (xforall3_ptree l1 l2 PTree.Leaf (PTree.append i (xO xH))) && 
+              (xforall3_ptree l1 l2 PTree.Leaf (Maps.append i (xO xH))) && 
               (f i o1 o2 None) &&
-              (xforall3_ptree r1 r2 PTree.Leaf (PTree.append i (xI xH)))
+              (xforall3_ptree r1 r2 PTree.Leaf (Maps.append i (xI xH)))
             | PTree.Node l3 o3 r3 => 
-              (xforall3_ptree l1 l2 l3 (PTree.append i (xO xH))) && 
+              (xforall3_ptree l1 l2 l3 (Maps.append i (xO xH))) && 
               (f i o1 o2 o3) &&
-              (xforall3_ptree r1 r2 r3 (PTree.append i (xI xH)))
+              (xforall3_ptree r1 r2 r3 (Maps.append i (xI xH)))
           end
         end
     end.
@@ -1144,34 +1160,34 @@ Section forall3_ptree.
   Lemma xgforall3_ptree :
     forall i m1 m2 m3 j,
       xforall3_ptree m1 m2 m3 j = true ->
-      f (PTree.append j i) (PTree.get i m1) (PTree.get i m2) (PTree.get i m3) = true.
+      f (Maps.append j i) (PTree.get i m1) (PTree.get i m2) (PTree.get i m3) = true.
   Proof.
     induction i; intros; destruct m1; destruct m2; destruct m3; simpl in *; auto;
       repeat rewrite andb_true_iff in *.
     replace (@None B) with (@PTree.get B i PTree.Leaf) by apply PTree.gempty.
-    rewrite (PTree.append_assoc_1 j i); apply xgforall3_r; intuition.
-    rewrite (PTree.append_assoc_1 j i); apply xgforall3_r; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply xgforall3_r; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply xgforall3_r; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf) by apply PTree.gempty.
-    rewrite (PTree.append_assoc_1 j i); apply xgforall3_l; intuition.
-    rewrite (PTree.append_assoc_1 j i); apply xgforall3_l; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply xgforall3_l; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply xgforall3_l; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf) by apply PTree.gempty.
-    rewrite (PTree.append_assoc_1 j i); apply IHi; intuition.
-    rewrite (PTree.append_assoc_1 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_1 j i); apply IHi; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf) by apply PTree.gempty.
-    rewrite (PTree.append_assoc_0 j i); apply xgforall3_r; intuition.
-    rewrite (PTree.append_assoc_0 j i); apply xgforall3_r; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply xgforall3_r; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply xgforall3_r; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf) by apply PTree.gempty.
-    rewrite (PTree.append_assoc_0 j i); apply xgforall3_l; intuition.
-    rewrite (PTree.append_assoc_0 j i); apply xgforall3_l; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply xgforall3_l; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply xgforall3_l; intuition.
     replace (@None B) with (@PTree.get B i PTree.Leaf) by apply PTree.gempty.
-    rewrite (PTree.append_assoc_0 j i); apply IHi; intuition.
-    rewrite (PTree.append_assoc_0 j i); apply IHi; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
-    rewrite (PTree.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply IHi; intuition.
+    rewrite (Maps.append_assoc_0 j i); apply IHi; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
+    rewrite (Maps.append_neutral_r j); auto; intuition.
   Qed.
 
   Definition forall3_ptree (m1 m2 : PTree.t A) (m3: PTree.t B) : bool :=
@@ -1182,13 +1198,13 @@ Section forall3_ptree.
       forall i, f i (PTree.get i m1) (PTree.get i m2) (PTree.get i m3) = true.
   Proof.
     unfold forall3_ptree; intros.
-    replace (f i) with (f (PTree.append xH i)).
+    replace (f i) with (f (Maps.append xH i)).
     eapply xgforall3_ptree; eauto.
-    rewrite (PTree.append_neutral_l i); auto.
+    rewrite (Maps.append_neutral_l i); auto.
   Qed.
 
 End forall3_ptree.
-Implicit Arguments forall3_ptree [A B].
+Arguments forall3_ptree [A B].
 
   Section COMBINE.
     Import PTree.
@@ -1248,7 +1264,7 @@ Implicit Arguments forall3_ptree [A B].
   Qed.
 
   End COMBINE.
-Implicit Arguments combine [A B C].
+Arguments combine [A B C].
 
 (** * Relational operators *)
 

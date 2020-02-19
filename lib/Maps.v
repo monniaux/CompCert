@@ -435,6 +435,7 @@ Module PTree <: TREE.
 
   End BOOLEAN_EQUALITY.
 
+
   Fixpoint prev_append (i j: positive) {struct i} : positive :=
     match i with
       | xH => j
@@ -1780,3 +1781,41 @@ Module PTree_Properties := Tree_Properties(PTree).
 
 Notation "a ! b" := (PTree.get b a) (at level 1).
 Notation "a !! b" := (PMap.get b a) (at level 1).
+
+  
+    Fixpoint append (i j : positive) {struct i} : positive :=
+      match i with
+      | xH => j
+      | xI ii => xI (append ii j)
+      | xO ii => xO (append ii j)
+      end.
+
+    Lemma append_assoc_0 : forall (i j : positive),
+                           append i (xO j) = append (append i (xO xH)) j.
+    Proof.
+      induction i; intros; destruct j; simpl;
+      try rewrite (IHi (xI j));
+      try rewrite (IHi (xO j));
+      try rewrite <- (IHi xH);
+      auto.
+    Qed.
+
+    Lemma append_assoc_1 : forall (i j : positive),
+                           append i (xI j) = append (append i (xI xH)) j.
+    Proof.
+      induction i; intros; destruct j; simpl;
+      try rewrite (IHi (xI j));
+      try rewrite (IHi (xO j));
+      try rewrite <- (IHi xH);
+      auto.
+    Qed.
+
+    Lemma append_neutral_r : forall (i : positive), append i xH = i.
+    Proof.
+      induction i; simpl; congruence.
+    Qed.
+
+    Lemma append_neutral_l : forall (i : positive), append xH i = i.
+    Proof.
+      simpl; auto.
+    Qed.
