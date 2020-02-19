@@ -276,7 +276,7 @@ endif
 
 
 clean:
-	rm -f $(patsubst %, %/*.vo, $(DIRS))
+	rm -f $(patsubst %, %/*.vo*, $(DIRS))
 	rm -f $(patsubst %, %/.*.aux, $(DIRS))
 	rm -rf doc/html doc/*.glob
 	rm -f driver/Version.ml
