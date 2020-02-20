@@ -23,24 +23,12 @@ Require Import FSets.
 Require Import DLib.
 Require FSetAVL.
 
-
-(** * Decidable equalities over various types *)
-Lemma zeq : forall (x y:Z), {x = y} + {x <> y}.
-Proof. 
-  decide equality; decide equality.
-Qed.
-
+Search (forall (x y: memory_chunk), {x=y} + {x<>y}).
 Lemma eq_memory_chunk:
   forall (x y: memory_chunk), {x=y} + {x<>y}.
 Proof.
-  decide equality.
+  apply chunk_eq.
 Qed.
-
-Lemma eq_addressing:
-  forall (x y: addressing), {x=y} + {x<>y}.
-Proof.
-  eapply eq_addressing.
-Qed.  
 
 Lemma eq_comparison:
   forall (x y: comparison), {x = y} + {x <> y}.
@@ -48,16 +36,6 @@ Proof.
   decide equality.
 Qed.
 
-Lemma eq_condition:
-  forall (x y: condition), {x=y} + {x<>y}.
-Proof.
-  generalize eq_operation; intro.
-  decide equality;
-  match goal with
-      [ |- {?c = ?c0} + { _ <> _} ]=>
-      case_eq c ; case_eq c0; intros ; try eapply eq_comparison; try (eapply Int.eq_dec)
-  end.
-Qed.
 
 Lemma eq_typ:
   forall (x y:typ), {x=y} + {x<>y}.
@@ -68,20 +46,13 @@ Qed.
 Lemma eq_signature:
   forall (x y: signature), {x=y} + {x<>y}.
 Proof.
-  generalize Int.eq_dec ; intro.
-  generalize Float.eq_dec ; intro.
-  generalize eq_typ ; intro.
-  decide equality;
-  case_eq sig_res ; case_eq sig_res0; intros; try decide equality; auto.
+  apply signature_eq.
 Qed.
 
 Lemma eq_external_function:
   forall (x y: external_function), {x = y} + {x <> y}.
 Proof.
-  repeat (decide equality;
-          try apply eq_signature;
-          try eapply Int.eq_dec).
-  apply Float.eq_dec.
+  apply external_function_eq.
 Qed.
 
 (** * Utility lemmas about [get_index_acc] and [get_index] *)
@@ -827,7 +798,7 @@ Proof.
         case_eq (nth_error l k); intros; eauto.
         (* case some *)
         rewrite P2Map.gso ; eauto.
-        intro Hinv; inv Hinv; exploit (H l); eauto. 
+        intro Hinv. inv Hinv; exploit (H l); eauto. 
 Qed.
 
 Lemma phistore_compat: forall k block (rs1 rs2: SSA.regset), 
@@ -881,26 +852,39 @@ Module MiniOrderedTypeProd (O1 O2:OrderedType) <: MiniOrderedType.
 
   Lemma eq_refl : forall x : t, eq x x.
   Proof.
-    split; auto.
+    split.
+    apply O1.eq_refl.
+    apply O2.eq_refl.
   Qed.
 
   Lemma eq_sym : forall x y : t, eq x y -> eq y x.
   Proof.
-    intros x y H; inv H; split; auto.
+    intros x y H; inv H; split.
+    apply O1.eq_sym; auto.
+    apply O2.eq_sym; auto.
   Qed.
 
   Lemma eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
   Proof.
-    intros x y z H1 H2; inv H1; inv H2; split; eauto.
+    intros x y z H1 H2; inv H1; inv H2; split.
+    eapply O1.eq_trans; eauto.
+    eapply O2.eq_trans; eauto.
   Qed.
 
   Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
   Proof.
     intros x y z H1 H2; inv H1; inv H2.
-    left; eauto.
-    destruct H0; left; eauto.
-    destruct H; left; eauto.
-    destruct H; destruct H0; right; split; eauto.
+    - left.
+      eapply O1.lt_trans; eauto.
+    - destruct H0.
+      left.
+      eapply P1.lt_eq; eauto.
+    - destruct H.
+      left.
+      eapply P1.eq_lt; eauto.
+    -  destruct H; destruct H0; right; split.
+       + eapply O1.eq_trans; eauto.
+       + eapply O2.lt_trans; eauto.
   Qed.
 
   Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
@@ -922,6 +906,7 @@ Module MiniOrderedTypeProd (O1 O2:OrderedType) <: MiniOrderedType.
     constructor 1; right; split; simpl; auto.
     constructor 2; split; auto.
     constructor 3; right; split; simpl; auto.
+    apply O1.eq_sym; auto.
     constructor 3; left; auto.
   Defined.
     
