@@ -168,7 +168,7 @@ Section Graph.
     econstructor ; eauto. 
     split ; auto.
     intro Hcont. inv Hcont. congruence. elim Hpc'' ; auto.
-    exploit path_from_ret_nil ; eauto. intros Heq ; inv Heq.
+    exploit path_from_ret_nil ; eauto. intros Heq. inv Heq.
     inv PATH.
   Qed.
 
