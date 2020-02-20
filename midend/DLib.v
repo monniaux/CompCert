@@ -21,7 +21,7 @@ Ltac go :=
   try omega; 
   subst; 
   eauto 4 with zarith datatypes;
-  try econstructor; try (solve[go]).
+  try econstructor. (* try (solve[go]). *)
 
 Tactic Notation "go" := try (go; fail).
 

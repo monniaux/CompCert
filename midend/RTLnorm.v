@@ -18,7 +18,7 @@ Require Import Registers.
 Require Import RTL.
 Require Import Kildall. 
 Require Import Utils.
-Open Local Scope string_scope.
+Local Open Scope string_scope.
 
 (** * Predicates used in the state of the monad *)
 (** They essentially handle the program point mapping between the initial and transformed function. *)
@@ -126,21 +126,17 @@ Inductive res (A: Type) (s: state): Type :=
   | Error: Errors.errmsg -> res A s
   | OK: A -> forall (s': state), state_incr s s' -> res A s.
 
-Implicit Arguments OK [A s].
-Implicit Arguments Error [A s].
+Arguments OK [A s].
+Arguments Error [A s].
 
 Definition mon (A: Type) : Type := forall (s: state), res A s.
 
-Definition ret (A: Type) (x: A) : mon A :=
+Definition ret {A: Type} (x: A) : mon A :=
   fun (s: state) => OK x s (state_incr_refl s).
 
-Implicit Arguments ret [A].
+Definition error {A: Type} (msg: Errors.errmsg) : mon A := fun (s: state) => Error msg.
 
-Definition error (A: Type) (msg: Errors.errmsg) : mon A := fun (s: state) => Error msg.
-
-Implicit Arguments error [A].
-
-Definition bind (A B: Type) (f: mon A) (g: A -> mon B) : mon B :=
+Definition bind {A B: Type} (f: mon A) (g: A -> mon B) : mon B :=
   fun (s: state) =>
     match f s with
     | Error msg => Error msg
@@ -151,12 +147,8 @@ Definition bind (A B: Type) (f: mon A) (g: A -> mon B) : mon B :=
         end
     end.
 
-Implicit Arguments bind [A B].
-
-Definition bind2 (A B C: Type) (f: mon (A * B)) (g: A -> B -> mon C) : mon C :=
+Definition bind2 {A B C: Type} (f: mon (A * B)) (g: A -> B -> mon C) : mon C :=
   bind f (fun xy => g (fst xy) (snd xy)).
-
-Implicit Arguments bind2 [A B C].
 
 Notation "'do' X <- A ; B" := (bind A (fun X => B))
    (at level 200, X ident, A at level 100, B at level 200).
@@ -184,7 +176,7 @@ Fixpoint mfold {A B: Type} (f: A -> B -> mon B) (l: list A) (b: B) : mon B :=
    of its successor [pc']. *)
 Lemma add_instr_wf: forall s i pc,
   let n:= s.(st_nextnode) in
-  Plt pc (Psucc n) \/
+  Plt pc (Pos.succ n) \/
    (PTree.set n i (st_code s)) ! pc = None.
 Proof.
   intros.
@@ -199,7 +191,7 @@ Remark add_instr_incr:
   forall s i e,
   let n := s.(st_nextnode) in
   state_incr s (mkstate
-                (Psucc n)
+                (Pos.succ n)
                 e
                 (PTree.set n i s.(st_code))
                 (add_instr_wf s i)).
@@ -218,11 +210,11 @@ Definition add_nop (pc':node) : mon node :=
       if peq pc' s.(st_entry)
         then
           OK pc_new
-          (mkstate (Psucc pc_new) pc_new (PTree.set pc_new (Inop pc') s.(st_code)) (add_instr_wf _ _))
+          (mkstate (Pos.succ pc_new) pc_new (PTree.set pc_new (Inop pc') s.(st_code)) (add_instr_wf _ _))
           (add_instr_incr s _ _)
         else
           OK pc_new
-          (mkstate (Psucc pc_new) s.(st_entry) (PTree.set pc_new (Inop pc') s.(st_code)) (add_instr_wf _ _))
+          (mkstate (Pos.succ pc_new) s.(st_entry) (PTree.set pc_new (Inop pc') s.(st_code)) (add_instr_wf _ _))
           (add_instr_incr s _ _).
 
 Fixpoint upd_nth {A: Type} (l: list A) (a: A) (k: nat) : (list A) :=
@@ -358,8 +350,8 @@ Definition modif_ksucc (is_jp:node->bool) (pc: node) (succ:node) (kl: nat * list
             then
               (do n <- add_nop succ ;
                do k' <- upd_succ pc n k ;
-                 ret (k',l++(n::nil))) s
-              else ret ((Datatypes.S k),(l++(succ::nil))) s
+                 ret (k',(l++(n::nil))%list)) s
+              else ret ((Datatypes.S k),(l++(succ::nil))%list) s
         end.
 
 (**  [modif_ksucc_opt] is the same as [modif_ksucc] except it is not instrumented with a list of [nat * list node] *)
@@ -411,7 +403,7 @@ Definition add_nop_entry (pc : node) : mon node :=
   fun s =>
     let pc_new := s.(st_nextnode) in
       OK pc_new
-      (mkstate (Psucc pc_new) pc_new (PTree.set pc_new (Inop pc) s.(st_code)) (add_instr_wf _ _))
+      (mkstate (Pos.succ pc_new) pc_new (PTree.set pc_new (Inop pc) s.(st_code)) (add_instr_wf _ _))
       (add_instr_incr _ _ _).
 
 Definition get_max {A: Type} (t: PTree.t A) : positive :=
@@ -447,7 +439,7 @@ Proof.
 Qed.
       
 Lemma get_max_lt {A: Type} : forall t pc (a:A),
-    t ! pc = Some a -> Plt pc (Psucc (get_max t)).
+    t ! pc = Some a -> Plt pc (Pos.succ (get_max t)).
 Proof.
   unfold get_max ; intros.
   exploit PTree.elements_correct ; eauto. intros.
@@ -459,7 +451,7 @@ Qed.
 
 (** * Initial state of the monad *)
 Lemma init_state_wf :
-  forall f pc, Plt pc (Psucc (get_max (fn_code f))) \/ (fn_code f)!pc = None.
+  forall f pc, Plt pc (Pos.succ (get_max (fn_code f))) \/ (fn_code f)!pc = None.
 Proof.
   intros.
   case_eq ((fn_code f) ! pc); intros.
@@ -468,7 +460,7 @@ Proof.
 Qed.
 
 Definition init_state (f: RTL.function) : state :=
-  mkstate (Psucc (get_max (fn_code f))) (fn_entrypoint f) (fn_code f) (init_state_wf _).
+  mkstate (Pos.succ (get_max (fn_code f))) (fn_entrypoint f) (fn_code f) (init_state_wf _).
 
 Definition succ_code (code: code) :=
   PTree.map (fun (_ : positive) (i : instruction) => successors_instr i)

@@ -603,7 +603,7 @@ Inductive step: state -> trace -> state -> Prop :=
     find_function ros rs = Some fd ->
     funsig fd = sig ->
     Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
-    step (State s f (Vptr stk Int.zero) pc rs m)
+    step (State s f (Vptr stk Ptrofs.zero) pc rs m)
     E0 (Callstate s fd rs##2 args m')
 | exec_Ibuiltin:
   forall s f sp pc rs m ef args res pc' t v m',
@@ -634,7 +634,7 @@ Inductive step: state -> trace -> state -> Prop :=
   forall s f stk pc rs m or m',
     (fn_code f)!pc = Some(Ireturn or) ->
     Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
-    step (State s f (Vptr stk Int.zero) pc rs m)
+    step (State s f (Vptr stk Ptrofs.zero) pc rs m)
     E0 (Returnstate s (regmap2_optget or Vundef rs) m')
 | exec_function_internal:
   forall s f args m m' stk,
@@ -642,7 +642,7 @@ Inductive step: state -> trace -> state -> Prop :=
     step (Callstate s (Internal f) args m)
     E0 (State s
       f
-      (Vptr stk Int.zero)
+      (Vptr stk Ptrofs.zero)
       f.(fn_entrypoint)
       (init_regs args f.(fn_params))
       m')
@@ -672,7 +672,7 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.init_mem p = Some m0 ->
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
-      funsig f = mksignature nil (Some Tint) ->
+      funsig f = signature_main ->
       initial_state p (Callstate nil f nil m0).
 
 (** A final state is a [Returnstate] with an empty call stack. *)

@@ -850,7 +850,8 @@ Definition transf_function' (f: function) (approxs: PMap.t numbering) : function
     f.(fn_params)
     f.(fn_stacksize)
     (transf_code approxs f.(fn_code))
-    f.(fn_entrypoint).
+    f.(fn_entrypoint)
+    nil.
 
 Definition regs_lessdef (rs1 rs2: regset) : Prop :=
   forall r, Val.lessdef (rs1#r) (rs2#r).

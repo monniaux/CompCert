@@ -87,7 +87,8 @@ Record function: Type := mkfunction {
   fn_params: list reg;
   fn_stacksize: Z;
   fn_code: code;
-  fn_entrypoint: node
+  fn_entrypoint: node;
+  fn_dfs : list node
 }.
 
 (** A function description comprises a control-flow graph (CFG) [fn_code]
@@ -373,7 +374,8 @@ Definition transf_function (f: function) : function :=
     f.(fn_params)
     f.(fn_stacksize)
     (PTree.map transf f.(fn_code))
-    f.(fn_entrypoint).
+    f.(fn_entrypoint)
+    f.(fn_dfs).
 
 End TRANSF.
 

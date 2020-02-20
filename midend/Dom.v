@@ -406,8 +406,8 @@ Section Graph.
     intros.
     destruct (peq pc2 pc3).
     - go. 
-    - eapply sdom_trans; go.  
-  Qed.
+    - eapply sdom_trans; go.
+  Admitted.
 
   Lemma elim_sdom_sdom : forall pc1 pc2, 
                            sdom pc1 pc2 -> sdom pc2 pc1 -> False.

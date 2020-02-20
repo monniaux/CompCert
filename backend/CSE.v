@@ -570,7 +570,8 @@ Definition transf_function (rm: romem) (f: function) : res function :=
            f.(fn_params)
            f.(fn_stacksize)
            (transf_code approxs f.(fn_code))
-           f.(fn_entrypoint))
+           f.(fn_entrypoint)
+           nil)
   end.
 
 Definition transf_fundef (rm: romem) (f: fundef) : res fundef :=

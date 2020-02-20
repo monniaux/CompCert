@@ -19,8 +19,6 @@ Module Type NODE_TREE.
   Parameter get : forall {A:Type}, node -> tree A -> option A.
   Parameter set : forall {A:Type}, node -> A -> tree A -> tree A.
   Parameter empty : forall A:Type, tree A.
-  Arguments get [A _ _].
-  Arguments set [A _ _ _].
 
   Parameter gsspec:
     forall (A: Type) (i j: node) (x: A) (m: tree A),
