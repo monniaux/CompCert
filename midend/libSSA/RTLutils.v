@@ -58,18 +58,31 @@ Ltac simpl_succs :=
       unfold successors_list, RTL.successors_map ; rewrite PTree.gmap1 ;
         (rewrite H1; simpl; auto)
   end.
-  
+
+Inductive use_builtin_arg : builtin_arg Registers.reg -> Registers.reg -> Prop :=
+| UBA: forall r, use_builtin_arg (BA r) r
+| UBA_split_long_hi: forall hi lo r,
+    use_builtin_arg hi r -> use_builtin_arg (BA_splitlong hi lo) r
+| UBA_split_long_lo: forall hi lo r,
+    use_builtin_arg lo r -> use_builtin_arg (BA_splitlong hi lo) r.
+
+Inductive use_builtin_args : list (builtin_arg Registers.reg) -> Registers.reg -> Prop :=
+| UBA_head: forall h t r, use_builtin_arg h r -> use_builtin_args (h::t) r
+| UBA_tail: forall h t r, use_builtin_args t r -> use_builtin_args (h::t) r.
+
 (** * Registers that are used in the code of a RTL function *)
 (** This has to be cleaned out. Cf RTL.use_instr *)
   Inductive use_rtl_code (f: function) : Registers.reg -> node -> Prop := 
   | UIop: forall pc arg op args dst s, 
     (RTL.fn_code f) !pc = Some (RTL.Iop op args dst s)  -> In arg args -> use_rtl_code f arg pc
+
   | UIload: forall pc arg chk adr args dst s,
     (RTL.fn_code f) !pc = Some (RTL.Iload chk adr args dst s) -> In arg args -> use_rtl_code f arg pc
   | UIcond: forall pc arg cond args s s',
     (RTL.fn_code f) !pc = Some (RTL.Icond cond args s s') -> In arg args -> use_rtl_code f arg pc 
   | UIbuiltin: forall pc arg ef args dst s,
-    (RTL.fn_code f) !pc = Some (RTL.Ibuiltin ef args dst s) -> In arg args -> use_rtl_code f arg pc
+      (RTL.fn_code f) !pc = Some (RTL.Ibuiltin ef args dst s) ->
+      use_builtin_args args arg -> use_rtl_code f arg pc
   | UIstore: forall pc arg chk adr args src s,
     (RTL.fn_code f) !pc = Some (RTL.Istore chk adr args src s) -> In arg (src::args) -> use_rtl_code f arg pc
   | UIcall: forall pc arg sig r args dst s,
@@ -215,7 +228,7 @@ Inductive assigned_code_spec (code:code) (pc:node) : reg -> Prop :=
   code!pc = Some (Icall sig fn args dst succ) ->
   assigned_code_spec code pc dst
 | AIbuiltin: forall fn args dst succ,
-  code!pc = Some (Ibuiltin fn args dst succ) ->
+  code!pc = Some (Ibuiltin fn args (BR dst) succ) ->
   assigned_code_spec code pc dst.
 Hint Constructors assigned_code_spec.
 
