@@ -1401,6 +1401,24 @@ Proof.
 Qed.
 Hint Resolve wellformed_mem_mpc : wellformed.
 
+Lemma match_same_option :
+  forall { A B : Type},
+  forall x : option A,
+  forall y : B,
+    (match x with Some _ => y | None => y end) = y.
+Proof.
+  destruct x; trivial.
+Qed.
+
+Lemma match_same_bool :
+  forall { B : Type},
+  forall x : bool,
+  forall y : B,
+    (if x then y else y) = y.
+Proof.
+  destruct x; trivial.
+Qed.
+
 Lemma step_simulation:
   forall S1 t S2, RTL.step ge S1 t S2 ->
   forall S1', match_states S1 S1' ->
@@ -1428,8 +1446,9 @@ Proof.
   reflexivity.
 - (* op *)
   unfold transf_instr in *.
-  destruct find_op_in_fmap eqn:FIND_OP.
+  destruct (if is_trivial_op op then None else find_op_in_fmap (forward_map f)  pc op (subst_args (forward_map f) pc args)) eqn:FIND_OP.
   {
+    destruct is_trivial_op. discriminate.
     unfold find_op_in_fmap, fmap_sem', fmap_sem in *.
     destruct (forward_map f) as [map |] eqn:MAP.
     2: discriminate.

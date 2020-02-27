@@ -525,7 +525,7 @@ Definition transf_instr (fmap : option (PMap.t RB.t))
   match instr with
   | Iop op args dst s =>
     let args' := subst_args fmap pc args in
-    match find_op_in_fmap fmap pc op args' with
+    match (if is_trivial_op op then None else find_op_in_fmap fmap pc op args') with
     | None => Iop op args' dst s
     | Some src => Iop Omove (src::nil) dst s
     end
