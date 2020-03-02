@@ -266,6 +266,14 @@ Definition kill_reg (dst : reg) (rel : RELATION.t) :=
   PTree.filter1 (fun x => negb (kill_sym_val dst x))
                 (PTree.remove dst rel).
 
+Definition max_chunk_size := 8.
+
+Definition can_swap_accesses_ofs ofsr chunkr ofsw chunkw :=
+     (0 <=? ofsw) && (ofsw <=? (Ptrofs.modulus - max_chunk_size))
+  && (0 <=? ofsr) && (ofsr <=? (Ptrofs.modulus - max_chunk_size))
+  && ((ofsw + size_chunk chunkw <=? ofsr) ||
+      (ofsr + size_chunk chunkr <=? ofsw)).
+  
 Definition kill_sym_val_mem (sv: sym_val) :=
   match sv with
   | SMove _ => false

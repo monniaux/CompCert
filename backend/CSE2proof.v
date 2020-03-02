@@ -704,14 +704,6 @@ Section MEMORY_WRITE.
   Variable base : val.
   Variable ofsw ofsr : Z.
 
-  Definition max_chunk_size := 8.
-  (*
-  Hypothesis RANGEW : 0 <= ofsw <= 18446744073709551608.
-  Hypothesis RANGER : 0 <= ofsr <= 18446744073709551608.
-   *)
-  Hypothesis RANGEW : 0 <= ofsw <= Ptrofs.modulus - max_chunk_size.
-  Hypothesis RANGER : 0 <= ofsr <= Ptrofs.modulus - max_chunk_size.
-  
   Lemma size_chunk_bounded :
     forall chunk, 0 <= size_chunk chunk <= max_chunk_size.
   Proof.
@@ -719,10 +711,6 @@ Section MEMORY_WRITE.
     destruct chunk; simpl; lia.
   Qed.
   
-  Hypothesis no_overlap:
-         ofsw + size_chunk chunkw <= ofsr
-      \/ ofsr + size_chunk chunkr <= ofsw.
-
   Variable addrw addrr valw valr : val.
   
   Hypothesis ADDRW : eval_addressing genv sp
@@ -732,9 +720,15 @@ Section MEMORY_WRITE.
   Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
   Hypothesis READ : Mem.loadv chunkr m addrr = Some valr.
 
-  Theorem load_store_away :
+  Lemma load_store_away1 :
+    forall RANGEW : 0 <= ofsw <= Ptrofs.modulus - max_chunk_size,
+    forall RANGER : 0 <= ofsr <= Ptrofs.modulus - max_chunk_size,
+    forall SWAPPABLE :    ofsw + size_chunk chunkw <= ofsr
+                       \/ ofsr + size_chunk chunkr <= ofsw,
     Mem.loadv chunkr m2 addrr = Some valr.
   Proof.
+    intros.
+    
     pose proof (size_chunk_bounded chunkr) as size_chunkr_bounded.
     pose proof (size_chunk_bounded chunkw) as size_chunkw_bounded.
     unfold max_chunk_size in size_chunkr_bounded, size_chunkw_bounded.
@@ -778,6 +772,18 @@ Section MEMORY_WRITE.
     all: try change Ptrofs.modulus with 18446744073709551616.
    
     all: intuition lia.
+  Qed.
+  
+  Theorem load_store_away :
+    can_swap_accesses_ofs ofsr chunkr ofsw chunkw = true ->
+    Mem.loadv chunkr m2 addrr = Some valr.
+  Proof.
+    intro SWAP.
+    unfold can_swap_accesses_ofs in SWAP.
+    repeat rewrite andb_true_iff in SWAP.
+    repeat rewrite orb_true_iff in SWAP.
+    repeat rewrite Z.leb_le in SWAP.
+    apply load_store_away1; intuition.
   Qed.
 End MEMORY_WRITE.
 
