@@ -811,6 +811,44 @@ Proof.
   }
 Qed.
 
+Lemma kill_store1_sound :
+  forall m m' : mem,
+  forall rel : RELATION.t,
+  forall chunk addr args a v rs,
+    (eval_addressing genv sp addr (rs ## args)) = Some a ->
+    (Mem.storev chunk m a v) = Some m' ->
+    sem_rel m rel rs -> sem_rel m' (kill_store1 chunk addr args rel) rs.
+Proof.
+  unfold sem_rel, sem_reg.
+  intros until rs.
+  intros ADDR STORE SEM x.
+  pose proof (SEM x) as SEMx.
+  unfold kill_store1.
+  rewrite PTree.gfilter1.
+  destruct (rel ! x) as [ sv | ].
+  2: reflexivity.
+  destruct sv; simpl in *; trivial.
+  {
+    destruct op_depends_on_memory eqn:DEPENDS; simpl; trivial.
+    rewrite SEMx.
+    apply op_depends_on_memory_correct; auto.
+  }
+  destruct addr; destruct addr0; simpl; trivial.
+  destruct args as [ | base [ | ]]; simpl; trivial.
+  destruct args0 as [ | base0 [ | ]]; simpl; trivial.
+  destruct (peq base base0); simpl; trivial.
+  subst base0.
+  destruct (can_swap_accesses_ofs z0 chunk0 z chunk) eqn:SWAP; simpl; trivial.
+  simpl in *.
+  destruct (eval_addressing genv sp (Aindexed z0) (rs # base :: nil)) eqn:ADDR0; simpl; trivial.
+  symmetry.
+  eapply load_store_away.
+  exact ADDR.
+  exact ADDR0.
+  exact STORE.
+  congruence.
+  assumption.
+Qed. 
 End SOUNDNESS.
 
 Definition match_prog (p tp: RTL.program) :=
@@ -1193,9 +1231,9 @@ Proof.
   unfold fmap_sem', fmap_sem in *.
   destruct (forward_map _) as [map |] eqn:MAP in *; trivial.
   destruct (map # pc) as [mpc |] eqn:MPC in *; try contradiction.
-  apply sem_rel_b_ge with (rb2 := Some (kill_mem mpc)); trivial.
+  apply sem_rel_b_ge with (rb2 := Some (kill_store chunk addr args mpc)); trivial.
   {
-  replace (Some (kill_mem mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
+  replace (Some (kill_store chunk addr args mpc)) with (apply_instr' (fn_code f) pc (map # pc)).
   {
     eapply DS.fixpoint_solution with (code := fn_code f) (successors := successors_instr); try eassumption.
     2: apply apply_instr'_bot.
@@ -1207,7 +1245,7 @@ Proof.
   rewrite H.
   reflexivity.
   }
-  apply (kill_mem_sound' sp m).
+  apply (kill_store_sound' sp m).
   assumption.
   
 (* call *)
