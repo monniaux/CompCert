@@ -704,12 +704,18 @@ Section MEMORY_WRITE.
   Variable base : val.
   Variable ofsw ofsr : Z.
 
+  Definition max_chunk_size := 8.
+  (*
   Hypothesis RANGEW : 0 <= ofsw <= 18446744073709551608.
   Hypothesis RANGER : 0 <= ofsr <= 18446744073709551608.
-
+   *)
+  Hypothesis RANGEW : 0 <= ofsw <= Ptrofs.modulus - max_chunk_size.
+  Hypothesis RANGER : 0 <= ofsr <= Ptrofs.modulus - max_chunk_size.
+  
   Lemma size_chunk_bounded :
-    forall chunk, 0 <= size_chunk chunk <= 8.
+    forall chunk, 0 <= size_chunk chunk <= max_chunk_size.
   Proof.
+    unfold max_chunk_size.
     destruct chunk; simpl; lia.
   Qed.
   
@@ -731,35 +737,47 @@ Section MEMORY_WRITE.
   Proof.
     pose proof (size_chunk_bounded chunkr) as size_chunkr_bounded.
     pose proof (size_chunk_bounded chunkw) as size_chunkw_bounded.
-    
+    unfold max_chunk_size in size_chunkr_bounded, size_chunkw_bounded.
+    try change (Ptrofs.modulus - max_chunk_size) with 4294967288 in *.
+    try change (Ptrofs.modulus - max_chunk_size) with 18446744073709551608 in *.
     destruct addrr ; simpl in * ; try discriminate.
     unfold eval_addressing in *.
-    destruct Archi.ptr64 eqn:PTR64.
-    {
-      unfold eval_addressing64 in *.
-      inv ADDRW.
-      destruct base; simpl in *; try discriminate.
-      rewrite PTR64 in *.
-      inv ADDRR.
-      rewrite <- READ.
-      eapply Mem.load_store_other.
-      exact STORE.
-      right.
-      destruct (Ptrofs.unsigned_add_either i0
-                  (Ptrofs.of_int64 (Int64.repr ofsr))) as [OFSR | OFSR];
-        rewrite OFSR.
-      all: destruct (Ptrofs.unsigned_add_either i0
-                  (Ptrofs.of_int64 (Int64.repr ofsw))) as [OFSW | OFSW];
-        rewrite OFSW.
-      all: unfold Ptrofs.of_int64.
-      all: repeat rewrite Int64.unsigned_repr by (change Int64.max_unsigned with 18446744073709551615; lia).
-      all: repeat rewrite Ptrofs.unsigned_repr by (change Ptrofs.max_unsigned with 18446744073709551615; lia).
-      all: change Ptrofs.modulus with 18446744073709551616.
-      all: intuition lia.
-    }
-    {
-      destruct base; simpl in *; try discriminate.
-    }
+    destruct Archi.ptr64 eqn:PTR64; destruct base; simpl in *; try discriminate.
+    rewrite PTR64 in *.
+    
+    inv ADDRR.
+    inv ADDRW.
+    rewrite <- READ.
+    eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
+    exact STORE.
+    right.
+ 
+    all: try (destruct (Ptrofs.unsigned_add_either i0
+                (Ptrofs.of_int (Int.repr ofsr))) as [OFSR | OFSR];
+              rewrite OFSR).
+    all: try (destruct (Ptrofs.unsigned_add_either i0
+                (Ptrofs.of_int64 (Int64.repr ofsr))) as [OFSR | OFSR];
+              rewrite OFSR).
+    all: try (destruct (Ptrofs.unsigned_add_either i0
+                (Ptrofs.of_int (Int.repr ofsw))) as [OFSW | OFSW];
+              rewrite OFSW).
+    all: try (destruct (Ptrofs.unsigned_add_either i0
+                (Ptrofs.of_int64 (Int64.repr ofsw))) as [OFSW | OFSW];
+              rewrite OFSW).
+    
+    all: unfold Ptrofs.of_int64.
+    all: unfold Ptrofs.of_int.
+   
+
+    all: repeat rewrite Int.unsigned_repr by (change Int.max_unsigned with 4294967295; lia).
+    all: repeat rewrite Ptrofs.unsigned_repr by (change Ptrofs.max_unsigned with 4294967295; lia).
+    all: repeat rewrite Int64.unsigned_repr by (change Int64.max_unsigned with 18446744073709551615; lia).
+    all: repeat rewrite Ptrofs.unsigned_repr by (change Ptrofs.max_unsigned with 18446744073709551615; lia).
+
+    all: try change Ptrofs.modulus with 4294967296.
+    all: try change Ptrofs.modulus with 18446744073709551616.
+   
+    all: intuition lia.
   Qed.
 End MEMORY_WRITE.
 
