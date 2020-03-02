@@ -14,6 +14,7 @@ Require Import Globalenvs Values.
 Require Import Linking Values Memory Globalenvs Events Smallstep.
 Require Import Registers Op RTL.
 Require Import CSE2.
+Require Import Lia.
 
 Lemma args_unaffected:
   forall rs : regset,
@@ -696,6 +697,71 @@ Proof.
     congruence.
 Qed.
 End SAME_MEMORY.
+
+Section MEMORY_WRITE.
+  Variable m m2 : mem.
+  Variable chunkw chunkr : memory_chunk.
+  Variable base : val.
+  Variable ofsw ofsr : Z.
+
+  Hypothesis RANGEW : 0 <= ofsw <= 18446744073709551608.
+  Hypothesis RANGER : 0 <= ofsr <= 18446744073709551608.
+
+  Lemma size_chunk_bounded :
+    forall chunk, 0 <= size_chunk chunk <= 8.
+  Proof.
+    destruct chunk; simpl; lia.
+  Qed.
+  
+  Hypothesis no_overlap:
+         ofsw + size_chunk chunkw <= ofsr
+      \/ ofsr + size_chunk chunkr <= ofsw.
+
+  Variable addrw addrr valw valr : val.
+  
+  Hypothesis ADDRW : eval_addressing genv sp
+                       (Aindexed ofsw) (base :: nil) = Some addrw. 
+  Hypothesis ADDRR : eval_addressing genv sp
+                       (Aindexed ofsr) (base :: nil) = Some addrr.
+  Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
+  Hypothesis READ : Mem.loadv chunkr m addrr = Some valr.
+
+  Theorem load_store_away :
+    Mem.loadv chunkr m2 addrr = Some valr.
+  Proof.
+    pose proof (size_chunk_bounded chunkr) as size_chunkr_bounded.
+    pose proof (size_chunk_bounded chunkw) as size_chunkw_bounded.
+    
+    destruct addrr ; simpl in * ; try discriminate.
+    unfold eval_addressing in *.
+    destruct Archi.ptr64 eqn:PTR64.
+    {
+      unfold eval_addressing64 in *.
+      inv ADDRW.
+      destruct base; simpl in *; try discriminate.
+      rewrite PTR64 in *.
+      inv ADDRR.
+      rewrite <- READ.
+      eapply Mem.load_store_other.
+      exact STORE.
+      right.
+      destruct (Ptrofs.unsigned_add_either i0
+                  (Ptrofs.of_int64 (Int64.repr ofsr))) as [OFSR | OFSR];
+        rewrite OFSR.
+      all: destruct (Ptrofs.unsigned_add_either i0
+                  (Ptrofs.of_int64 (Int64.repr ofsw))) as [OFSW | OFSW];
+        rewrite OFSW.
+      all: unfold Ptrofs.of_int64.
+      all: repeat rewrite Int64.unsigned_repr by (change Int64.max_unsigned with 18446744073709551615; lia).
+      all: repeat rewrite Ptrofs.unsigned_repr by (change Ptrofs.max_unsigned with 18446744073709551615; lia).
+      all: change Ptrofs.modulus with 18446744073709551616.
+      all: intuition lia.
+    }
+    {
+      destruct base; simpl in *; try discriminate.
+    }
+  Qed.
+End MEMORY_WRITE.
 
 Lemma kill_mem_sound :
   forall m m' : mem,
