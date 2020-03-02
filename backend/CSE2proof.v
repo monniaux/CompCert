@@ -502,6 +502,20 @@ Proof.
   destruct s; congruence.
 Qed.
 
+
+Lemma forward_move_rs:
+  forall rel arg rs,
+    sem_rel rel rs ->
+    rs # (forward_move rel arg) = rs # arg.
+Proof.
+  unfold forward_move, sem_rel, sem_reg, sem_sym_val in *.
+  intros until rs.
+  intro REL.
+  pose proof (REL arg) as RELarg.
+  destruct (rel ! arg); trivial.
+  destruct s; congruence.
+Qed.
+
 Lemma oper_sound :
   forall rel : RELATION.t,
   forall op : operation,
@@ -811,19 +825,19 @@ Proof.
   }
 Qed.
 
-Lemma kill_store1_sound :
+Lemma kill_store_sound :
   forall m m' : mem,
   forall rel : RELATION.t,
   forall chunk addr args a v rs,
     (eval_addressing genv sp addr (rs ## args)) = Some a ->
     (Mem.storev chunk m a v) = Some m' ->
-    sem_rel m rel rs -> sem_rel m' (kill_store1 chunk addr args rel) rs.
+    sem_rel m rel rs -> sem_rel m' (kill_store chunk addr args rel) rs.
 Proof.
   unfold sem_rel, sem_reg.
   intros until rs.
   intros ADDR STORE SEM x.
   pose proof (SEM x) as SEMx.
-  unfold kill_store1.
+  unfold kill_store, kill_store1.
   rewrite PTree.gfilter1.
   destruct (rel ! x) as [ sv | ].
   2: reflexivity.
@@ -836,18 +850,19 @@ Proof.
   destruct addr; destruct addr0; simpl; trivial.
   destruct args as [ | base [ | ]]; simpl; trivial.
   destruct args0 as [ | base0 [ | ]]; simpl; trivial.
-  destruct (peq base base0); simpl; trivial.
+  destruct (peq (forward_move rel base) base0); simpl; trivial.
   subst base0.
   destruct (can_swap_accesses_ofs z0 chunk0 z chunk) eqn:SWAP; simpl; trivial.
   simpl in *.
-  destruct (eval_addressing genv sp (Aindexed z0) (rs # base :: nil)) eqn:ADDR0; simpl; trivial.
+  erewrite forward_move_rs in * by exact SEM.
+  destruct (eval_addressing genv sp (Aindexed z0) ((rs # base) :: nil)) eqn:ADDR0; simpl; trivial.
   symmetry.
   eapply load_store_away.
-  exact ADDR.
-  exact ADDR0.
-  exact STORE.
-  congruence.
-  assumption.
+  - exact ADDR.
+  - exact ADDR0.
+  - exact STORE.
+  - congruence.
+  - assumption.
 Qed. 
 End SOUNDNESS.
 
