@@ -783,7 +783,8 @@ Section MEMORY_WRITE.
     repeat rewrite andb_true_iff in SWAP.
     repeat rewrite orb_true_iff in SWAP.
     repeat rewrite Z.leb_le in SWAP.
-    apply load_store_away1; intuition.
+    apply load_store_away1.
+    all: tauto.
   Qed.
 End MEMORY_WRITE.
 
