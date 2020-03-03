@@ -795,36 +795,17 @@ Proof.
     rewrite SEMx.
     apply op_depends_on_memory_correct; auto.
   }
-  destruct addr; destruct addr0; simpl; trivial.
-  { (* Aindexed / Aindexed *)
-  destruct args as [ | base [ | ]]; simpl; trivial.
-  destruct args0 as [ | base0 [ | ]]; simpl; trivial.
-  destruct (peq (forward_move rel base) base0); simpl; trivial.
-  subst base0.
-  destruct (can_swap_accesses_ofs z0 chunk0 z chunk) eqn:SWAP; simpl; trivial.
-  simpl in *.
-  erewrite forward_move_rs in * by exact SEM.
-  destruct (eval_addressing genv sp (Aindexed z0) ((rs # base) :: nil)) eqn:ADDR0; simpl; trivial.
+  destruct may_overlap eqn:OVERLAP; simpl; trivial.
+  destruct (eval_addressing genv sp addr0 rs ## args0) eqn:ADDR0.
   symmetry.
-  eapply load_store_away; eauto.
-  }
-  { (* Aglobal / Aglobal *)
-    destruct args; destruct args0; simpl; trivial.
-    destruct (peq i i1).
-    {
-      subst i1.
-      destruct (can_swap_accesses_ofs (Ptrofs.unsigned i2) chunk0
-                                      (Ptrofs.unsigned i0) chunk) eqn:SWAP; simpl; trivial.
-      simpl in *.
-      destruct (eval_addressing genv sp (Aglobal i i2) nil) eqn:ADDR1; simpl; trivial.
-      symmetry.
-      eapply load_store_glob_away; eauto.
-    }
-    simpl in *.
-    destruct (eval_addressing genv sp (Aglobal i1 i2) nil) eqn:ADDR1; simpl; trivial.
-    symmetry.
-    eapply load_store_diff_globals; eauto.
-  }
+  eapply may_overlap_sound with (args := (map (forward_move rel) args)).
+  erewrite forward_move_map by eassumption.
+  exact ADDR.
+  exact ADDR0.
+  exact OVERLAP.
+  exact STORE.
+  symmetry; assumption.
+  assumption.
 Qed. 
 End SOUNDNESS.
 
