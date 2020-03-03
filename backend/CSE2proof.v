@@ -951,6 +951,7 @@ Definition fmap_sem' := fmap_sem fundef unit ge.
 Definition subst_arg_ok' := subst_arg_ok fundef unit ge.
 Definition subst_args_ok' := subst_args_ok fundef unit ge.
 Definition kill_mem_sound' := kill_mem_sound fundef unit ge.
+Definition kill_store_sound' := kill_store_sound fundef unit ge.
 
 Lemma sem_rel_b_ge:
   forall rb1 rb2 : RB.t,
@@ -1260,8 +1261,7 @@ Proof.
   rewrite H.
   reflexivity.
   }
-  apply (kill_store_sound' sp m).
-  assumption.
+  eapply (kill_store_sound' sp m); eassumption.
   
 (* call *)
 - econstructor; split.

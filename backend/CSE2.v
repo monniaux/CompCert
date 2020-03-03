@@ -281,15 +281,37 @@ Definition kill_sym_val_mem (sv: sym_val) :=
   | SLoad _ _ _ => true
   end.
 
+Definition may_overlap chunk addr args chunk' addr' args' :=
+  match addr, addr', args, args' with
+  | (Aindexed ofs), (Aindexed ofs'),
+    (base :: nil), (base' :: nil) =>
+    if peq base base'
+    then negb (can_swap_accesses_ofs ofs' chunk' ofs chunk)
+    else true
+  | _, _, _, _ => true
+  end.
+
+Definition kill_sym_val_store chunk addr args (sv: sym_val) :=
+  match sv with
+  | SMove _ => false
+  | SOp op _ => op_depends_on_memory op
+  | SLoad chunk' addr' args' => may_overlap chunk addr args chunk' addr' args'
+  end.
+
 Definition kill_mem (rel : RELATION.t) :=
   PTree.filter1 (fun x => negb (kill_sym_val_mem x)) rel.
-
 
 Definition forward_move (rel : RELATION.t) (x : reg) : reg :=
   match rel ! x with
   | Some (SMove org) => org
   | _ => x
   end.
+
+Definition kill_store1 chunk addr args rel :=
+  PTree.filter1 (fun x => negb (kill_sym_val_store chunk addr args x)) rel.
+
+Definition kill_store chunk addr args rel :=
+  kill_store1 chunk addr (List.map (forward_move rel) args) rel.
 
 Definition move (src dst : reg) (rel : RELATION.t) :=
   PTree.set dst (SMove (forward_move rel src)) (kill_reg dst rel).
@@ -403,7 +425,7 @@ Definition apply_instr instr (rel : RELATION.t) : RB.t :=
   | Inop _
   | Icond _ _ _ _
   | Ijumptable _ _ => Some rel
-  | Istore _ _ _ _ _ => Some (kill_mem rel)
+  | Istore chunk addr args _ _ => Some (kill_store chunk addr args rel)
   | Iop op args dst _ => Some (gen_oper op dst args rel)
   | Iload chunk addr args dst _ => Some (load chunk addr dst args rel)
   | Icall _ _ _ dst _ => Some (kill_reg dst (kill_mem rel))
