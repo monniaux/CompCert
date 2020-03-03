@@ -289,7 +289,10 @@ Definition may_overlap chunk addr args chunk' addr' args' :=
     then negb (can_swap_accesses_ofs ofs' chunk' ofs chunk)
     else true
   | (Aglobal symb ofs), (Aglobal symb' ofs'),
-    nil, nil => peq symb symb'
+    nil, nil =>
+    if peq symb symb'
+    then negb (can_swap_accesses_ofs (Ptrofs.unsigned ofs') chunk' (Ptrofs.unsigned ofs) chunk)
+    else false
   | _, _, _, _ => true
   end.
 

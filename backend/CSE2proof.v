@@ -842,6 +842,74 @@ Section MEMORY_WRITE.
       - left. assumption.
     Qed.
   End DIFFERENT_GLOBALS.
+
+  Section SAME_GLOBALS.
+    Variable ofsw ofsr : ptrofs.
+    Hypothesis sym : ident.
+    Hypothesis ADDRW : eval_addressing genv sp
+                                       (Aglobal sym ofsw) nil = Some addrw. 
+    Hypothesis ADDRR : eval_addressing genv sp
+                                       (Aglobal sym ofsr) nil = Some addrr.
+    
+  Lemma load_store_glob_away1 :
+    forall RANGEW : 0 <= (Ptrofs.unsigned ofsw) <= Ptrofs.modulus - max_chunk_size,
+    forall RANGER : 0 <= (Ptrofs.unsigned ofsr) <= Ptrofs.modulus - max_chunk_size,
+    forall SWAPPABLE : (Ptrofs.unsigned ofsw) + size_chunk chunkw <= (Ptrofs.unsigned ofsr)
+                    \/ (Ptrofs.unsigned ofsr) + size_chunk chunkr <= (Ptrofs.unsigned ofsw),
+    Mem.loadv chunkr m2 addrr = Some valr.
+  Proof.
+    intros.
+    
+    pose proof (size_chunk_bounded chunkr) as size_chunkr_bounded.
+    pose proof (size_chunk_bounded chunkw) as size_chunkw_bounded.
+    unfold max_chunk_size in size_chunkr_bounded, size_chunkw_bounded.
+    try change (Ptrofs.modulus - max_chunk_size) with 4294967288 in *.
+    try change (Ptrofs.modulus - max_chunk_size) with 18446744073709551608 in *.
+    unfold eval_addressing, eval_addressing32, eval_addressing64 in *.
+    destruct Archi.ptr64 eqn:PTR64.
+
+    {
+      unfold Genv.symbol_address in *.
+      inv ADDRR.
+      inv ADDRW.
+      destruct (Genv.find_symbol genv sym).
+      2: discriminate.
+      
+      rewrite <- READ.
+      eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
+      exact STORE.
+      right.
+      tauto.
+    }
+
+    {
+      unfold Genv.symbol_address in *.
+      inv ADDRR.
+      inv ADDRW.
+      destruct (Genv.find_symbol genv sym).
+      2: discriminate.
+      
+      rewrite <- READ.
+      eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
+      exact STORE.
+      right.
+      tauto.
+    }
+  Qed.
+
+  Lemma load_store_glob_away :
+    (can_swap_accesses_ofs (Ptrofs.unsigned ofsr) chunkr (Ptrofs.unsigned ofsw) chunkw) = true ->
+    Mem.loadv chunkr m2 addrr = Some valr.
+  Proof.
+    intro SWAP.
+    unfold can_swap_accesses_ofs in SWAP.
+    repeat rewrite andb_true_iff in SWAP.
+    repeat rewrite orb_true_iff in SWAP.
+    repeat rewrite Z.leb_le in SWAP.
+    apply load_store_glob_away1.
+    all: tauto.
+  Qed.
+  End SAME_GLOBALS.
 End MEMORY_WRITE.
 
 Lemma kill_mem_sound :
@@ -904,7 +972,16 @@ Proof.
   }
   { (* Aglobal / Aglobal *)
     destruct args; destruct args0; simpl; trivial.
-    destruct (peq i i1); simpl; trivial.
+    destruct (peq i i1).
+    {
+      subst i1.
+      destruct (can_swap_accesses_ofs (Ptrofs.unsigned i2) chunk0
+                                      (Ptrofs.unsigned i0) chunk) eqn:SWAP; simpl; trivial.
+      simpl in *.
+      destruct (eval_addressing genv sp (Aglobal i i2) nil) eqn:ADDR1; simpl; trivial.
+      symmetry.
+      eapply load_store_glob_away; eauto.
+    }
     simpl in *.
     destruct (eval_addressing genv sp (Aglobal i1 i2) nil) eqn:ADDR1; simpl; trivial.
     symmetry.
