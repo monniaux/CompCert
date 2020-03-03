@@ -13,7 +13,7 @@ Require Import Memory Registers Op RTL Maps.
 Require Import Globalenvs Values.
 Require Import Linking Values Memory Globalenvs Events Smallstep.
 Require Import Registers Op RTL.
-Require Import CSE2 CSE2depsproof.
+Require Import CSE2 CSE2deps CSE2depsproof.
 Require Import Lia.
 
 Lemma args_unaffected:

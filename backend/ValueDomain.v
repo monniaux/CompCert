@@ -3502,11 +3502,6 @@ Proof.
 - omegaContradiction.
 Qed.
 
-Lemma max_size_chunk: forall chunk, size_chunk chunk <= 8.
-Proof.
-  destruct chunk; simpl; omega.
-Qed.
-
 Remark inval_before_contents:
   forall i c chunk' av' j,
   (inval_before i (i - 7) c)##j = Some (ACval chunk' av') ->

@@ -6,7 +6,7 @@ David Monniaux, CNRS, VERIMAG
 
 Require Import Coqlib Maps Errors Integers Floats Lattice Kildall.
 Require Import AST Linking.
-Require Import Memory Registers Op RTL Maps.
+Require Import Memory Registers Op RTL Maps CSE2deps.
 
 (* Static analysis *)
 
@@ -265,35 +265,12 @@ Definition kill_sym_val (dst : reg) (sv : sym_val) :=
 Definition kill_reg (dst : reg) (rel : RELATION.t) :=
   PTree.filter1 (fun x => negb (kill_sym_val dst x))
                 (PTree.remove dst rel).
-
-Definition max_chunk_size := 8.
-
-Definition can_swap_accesses_ofs ofsr chunkr ofsw chunkw :=
-     (0 <=? ofsw) && (ofsw <=? (Ptrofs.modulus - max_chunk_size))
-  && (0 <=? ofsr) && (ofsr <=? (Ptrofs.modulus - max_chunk_size))
-  && ((ofsw + size_chunk chunkw <=? ofsr) ||
-      (ofsr + size_chunk chunkr <=? ofsw)).
   
 Definition kill_sym_val_mem (sv: sym_val) :=
   match sv with
   | SMove _ => false
   | SOp op _ => op_depends_on_memory op
   | SLoad _ _ _ => true
-  end.
-
-Definition may_overlap chunk addr args chunk' addr' args' :=
-  match addr, addr', args, args' with
-  | (Aindexed ofs), (Aindexed ofs'),
-    (base :: nil), (base' :: nil) =>
-    if peq base base'
-    then negb (can_swap_accesses_ofs ofs' chunk' ofs chunk)
-    else true
-  | (Aglobal symb ofs), (Aglobal symb' ofs'),
-    nil, nil =>
-    if peq symb symb'
-    then negb (can_swap_accesses_ofs (Ptrofs.unsigned ofs') chunk' (Ptrofs.unsigned ofs) chunk)
-    else false
-  | _, _, _, _ => true
   end.
 
 Definition kill_sym_val_store chunk addr args (sv: sym_val) :=

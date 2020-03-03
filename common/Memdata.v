@@ -44,6 +44,13 @@ Definition size_chunk (chunk: memory_chunk) : Z :=
   | Many64 => 8
   end.
 
+Definition largest_size_chunk := 8.
+
+Lemma max_size_chunk: forall chunk, size_chunk chunk <= 8.
+Proof.
+  destruct chunk; simpl; omega.
+Qed.
+
 Lemma size_chunk_pos:
   forall chunk, size_chunk chunk > 0.
 Proof.
