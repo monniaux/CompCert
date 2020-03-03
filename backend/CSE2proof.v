@@ -716,7 +716,6 @@ Section MEMORY_WRITE.
   Variable m m2 : mem.
   Variable chunkw chunkr : memory_chunk.
   Variable base : val.
-  Variable ofsw ofsr : Z.
 
   Lemma size_chunk_bounded :
     forall chunk, 0 <= size_chunk chunk <= max_chunk_size.
@@ -726,13 +725,15 @@ Section MEMORY_WRITE.
   Qed.
   
   Variable addrw addrr valw valr : val.
-  
+  Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
+  Hypothesis READ : Mem.loadv chunkr m addrr = Some valr.
+
+  Section INDEXED_AWAY.
+  Variable ofsw ofsr : Z.
   Hypothesis ADDRW : eval_addressing genv sp
                        (Aindexed ofsw) (base :: nil) = Some addrw. 
   Hypothesis ADDRR : eval_addressing genv sp
                        (Aindexed ofsr) (base :: nil) = Some addrr.
-  Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
-  Hypothesis READ : Mem.loadv chunkr m addrr = Some valr.
 
   Lemma load_store_away1 :
     forall RANGEW : 0 <= ofsw <= Ptrofs.modulus - max_chunk_size,
@@ -800,6 +801,47 @@ Section MEMORY_WRITE.
     apply load_store_away1.
     all: tauto.
   Qed.
+  End INDEXED_AWAY.
+
+  Section DIFFERENT_GLOBALS.
+    Variable ofsw ofsr : ptrofs.
+    Hypothesis symw symr : ident.
+    Hypothesis ADDRW : eval_addressing genv sp
+                                       (Aglobal symw ofsw) nil = Some addrw. 
+    Hypothesis ADDRR : eval_addressing genv sp
+                                       (Aglobal symr ofsr) nil = Some addrr.
+    
+    Lemma load_store_diff_globals :
+      symw <> symr ->
+      Mem.loadv chunkr m2 addrr = Some valr.
+    Proof.
+      intros.
+      unfold eval_addressing in *.
+      destruct Archi.ptr64 eqn:PTR64; simpl in *.
+      rewrite PTR64 in *.
+      2: simpl in *; discriminate.
+      unfold Genv.symbol_address in *.
+      unfold Genv.find_symbol in *.
+      destruct ((Genv.genv_symb genv) ! symw) as [bw |] eqn:SYMW; inv ADDRW.
+      2: simpl in STORE; discriminate.
+      destruct ((Genv.genv_symb genv) ! symr) as [br |] eqn:SYMR; inv ADDRR.
+      2: simpl in READ; discriminate.
+      assert (br <> bw).
+      {
+        intro EQ.
+        subst br.
+        assert (symr = symw).
+        {
+          eapply Genv.genv_vars_inj; eauto.
+        }
+        congruence.
+      }
+      rewrite <- READ.
+      eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := bw).
+      - exact STORE.
+      - left. assumption.
+    Qed.
+  End DIFFERENT_GLOBALS.
 End MEMORY_WRITE.
 
 Lemma kill_mem_sound :
@@ -848,6 +890,7 @@ Proof.
     apply op_depends_on_memory_correct; auto.
   }
   destruct addr; destruct addr0; simpl; trivial.
+  { (* Aindexed / Aindexed *)
   destruct args as [ | base [ | ]]; simpl; trivial.
   destruct args0 as [ | base0 [ | ]]; simpl; trivial.
   destruct (peq (forward_move rel base) base0); simpl; trivial.
@@ -857,12 +900,16 @@ Proof.
   erewrite forward_move_rs in * by exact SEM.
   destruct (eval_addressing genv sp (Aindexed z0) ((rs # base) :: nil)) eqn:ADDR0; simpl; trivial.
   symmetry.
-  eapply load_store_away.
-  - exact ADDR.
-  - exact ADDR0.
-  - exact STORE.
-  - congruence.
-  - assumption.
+  eapply load_store_away; eauto.
+  }
+  { (* Aglobal / Aglobal *)
+    destruct args; destruct args0; simpl; trivial.
+    destruct (peq i i1); simpl; trivial.
+    simpl in *.
+    destruct (eval_addressing genv sp (Aglobal i1 i2) nil) eqn:ADDR1; simpl; trivial.
+    symmetry.
+    eapply load_store_diff_globals; eauto.
+  }
 Qed. 
 End SOUNDNESS.
 
