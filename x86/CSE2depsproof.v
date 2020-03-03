@@ -5,7 +5,7 @@ Require Import Memory Registers Op RTL Maps.
 Require Import Globalenvs Values.
 Require Import Linking Values Memory Globalenvs Events Smallstep.
 Require Import Registers Op RTL.
-Require Import CSE2.
+Require Import CSE2 CSE2deps.
 Require Import Lia.
 
 Section SOUNDNESS.
@@ -17,13 +17,6 @@ Section MEMORY_WRITE.
   Variable m m2 : mem.
   Variable chunkw chunkr : memory_chunk.
   Variable base : val.
-
-  Lemma size_chunk_bounded :
-    forall chunk, 0 <= size_chunk chunk <= max_chunk_size.
-  Proof.
-    unfold max_chunk_size.
-    destruct chunk; simpl; lia.
-  Qed.
   
   Variable addrw addrr valw valr : val.
   Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
@@ -37,19 +30,18 @@ Section MEMORY_WRITE.
                        (Aindexed ofsr) (base :: nil) = Some addrr.
 
   Lemma load_store_away1 :
-    forall RANGEW : 0 <= ofsw <= Ptrofs.modulus - max_chunk_size,
-    forall RANGER : 0 <= ofsr <= Ptrofs.modulus - max_chunk_size,
+    forall RANGEW : 0 <= ofsw <= Ptrofs.modulus - largest_size_chunk,
+    forall RANGER : 0 <= ofsr <= Ptrofs.modulus - largest_size_chunk,
     forall SWAPPABLE :    ofsw + size_chunk chunkw <= ofsr
                        \/ ofsr + size_chunk chunkr <= ofsw,
     Mem.loadv chunkr m2 addrr = Some valr.
   Proof.
     intros.
     
-    pose proof (size_chunk_bounded chunkr) as size_chunkr_bounded.
-    pose proof (size_chunk_bounded chunkw) as size_chunkw_bounded.
-    unfold max_chunk_size in size_chunkr_bounded, size_chunkw_bounded.
-    try change (Ptrofs.modulus - max_chunk_size) with 4294967288 in *.
-    try change (Ptrofs.modulus - max_chunk_size) with 18446744073709551608 in *.
+    pose proof (max_size_chunk chunkr) as size_chunkr_bounded.
+    pose proof (max_size_chunk chunkw) as size_chunkw_bounded.
+    try change (Ptrofs.modulus - largest_size_chunk) with 4294967288 in *.
+    try change (Ptrofs.modulus - largest_size_chunk) with 18446744073709551608 in *.
     destruct addrr ; simpl in * ; try discriminate.
     unfold eval_addressing in *.
     destruct Archi.ptr64 eqn:PTR64; destruct base; simpl in *; try discriminate.
@@ -111,16 +103,25 @@ Section MEMORY_WRITE.
                                        (Aglobal symw ofsw) nil = Some addrw. 
     Hypothesis ADDRR : eval_addressing genv sp
                                        (Aglobal symr ofsr) nil = Some addrr.
-    
+
+    Lemma ptr64_cases:
+      forall {T : Type},
+      forall b : bool,
+      forall x y : T,
+        (if b then (if b then x else y) else (if b then y else x)) = x.
+    Proof.
+      destruct b; reflexivity.
+    Qed.
+
     Lemma load_store_diff_globals :
       symw <> symr ->
       Mem.loadv chunkr m2 addrr = Some valr.
     Proof.
       intros.
       unfold eval_addressing in *.
-      destruct Archi.ptr64 eqn:PTR64; simpl in *.
-      rewrite PTR64 in *.
-      2: simpl in *; discriminate.
+      simpl in *.
+      rewrite ptr64_cases in ADDRR.
+      rewrite ptr64_cases in ADDRW.
       unfold Genv.symbol_address in *.
       unfold Genv.find_symbol in *.
       destruct ((Genv.genv_symb genv) ! symw) as [bw |] eqn:SYMW; inv ADDRW.
@@ -153,19 +154,19 @@ Section MEMORY_WRITE.
                                        (Aglobal sym ofsr) nil = Some addrr.
     
   Lemma load_store_glob_away1 :
-    forall RANGEW : 0 <= (Ptrofs.unsigned ofsw) <= Ptrofs.modulus - max_chunk_size,
-    forall RANGER : 0 <= (Ptrofs.unsigned ofsr) <= Ptrofs.modulus - max_chunk_size,
+    forall RANGEW : 0 <= (Ptrofs.unsigned ofsw) <= Ptrofs.modulus - largest_size_chunk,
+    forall RANGER : 0 <= (Ptrofs.unsigned ofsr) <= Ptrofs.modulus - largest_size_chunk,
     forall SWAPPABLE : (Ptrofs.unsigned ofsw) + size_chunk chunkw <= (Ptrofs.unsigned ofsr)
                     \/ (Ptrofs.unsigned ofsr) + size_chunk chunkr <= (Ptrofs.unsigned ofsw),
     Mem.loadv chunkr m2 addrr = Some valr.
   Proof.
     intros.
     
-    pose proof (size_chunk_bounded chunkr) as size_chunkr_bounded.
-    pose proof (size_chunk_bounded chunkw) as size_chunkw_bounded.
-    unfold max_chunk_size in size_chunkr_bounded, size_chunkw_bounded.
-    try change (Ptrofs.modulus - max_chunk_size) with 4294967288 in *.
-    try change (Ptrofs.modulus - max_chunk_size) with 18446744073709551608 in *.
+    pose proof (max_size_chunk chunkr) as size_chunkr_bounded.
+    pose proof (max_size_chunk chunkw) as size_chunkw_bounded.
+    unfold largest_size_chunk in size_chunkr_bounded, size_chunkw_bounded.
+    try change (Ptrofs.modulus - largest_size_chunk) with 4294967288 in *.
+    try change (Ptrofs.modulus - largest_size_chunk) with 18446744073709551608 in *.
     unfold eval_addressing, eval_addressing32, eval_addressing64 in *.
     destruct Archi.ptr64 eqn:PTR64.
 
