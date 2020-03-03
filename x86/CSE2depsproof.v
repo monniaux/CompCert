@@ -213,3 +213,49 @@ Section MEMORY_WRITE.
   End SAME_GLOBALS.
 End MEMORY_WRITE.
 End SOUNDNESS.
+
+
+Section SOUNDNESS.
+  Variable F V : Type.
+  Variable genv: Genv.t F V.
+  Variable sp : val.
+
+Lemma may_overlap_sound:
+  forall m m' : mem,
+  forall chunk addr args chunk' addr' args' v a a' vl rs,
+    (eval_addressing genv sp addr (rs ## args)) = Some a ->
+    (eval_addressing genv sp addr' (rs ## args')) = Some a' ->
+    (may_overlap chunk addr args chunk' addr' args') = false ->
+    (Mem.storev chunk m a v) = Some m' ->
+    (Mem.loadv chunk' m  a') = Some vl ->
+    (Mem.loadv chunk' m' a') = Some vl.
+Proof.
+  intros until rs.
+  intros ADDR ADDR' OVERLAP STORE LOAD.
+  destruct addr; destruct addr'; try discriminate.
+  { (* Aindexed / Aindexed *)
+  destruct args as [ | base [ | ]]. 1,3: discriminate.
+  destruct args' as [ | base' [ | ]]. 1,3: discriminate.
+  simpl in OVERLAP.
+  destruct (peq base base'). 2: discriminate.
+  subst base'.
+  destruct (can_swap_accesses_ofs z0 chunk' z chunk) eqn:SWAP.
+  2: discriminate.
+  simpl in *.
+  eapply load_store_away; eassumption.
+  }
+  { (* Aglobal / Aglobal *)
+    destruct args. 2: discriminate.
+    destruct args'. 2: discriminate.
+    simpl in *.
+    destruct (peq i i1).
+    {
+      subst i1.
+      rewrite negb_false_iff in OVERLAP.
+      eapply load_store_glob_away; eassumption.
+    }
+    eapply load_store_diff_globals; eassumption.
+  }
+Qed.
+
+End SOUNDNESS.
