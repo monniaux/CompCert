@@ -18,9 +18,8 @@ Section MEMORY_WRITE.
   Variable chunkw chunkr : memory_chunk.
   Variable base : val.
   
-  Variable addrw addrr valw valr : val.
+  Variable addrw addrr valw : val.
   Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
-  Hypothesis READ : Mem.loadv chunkr m addrr = Some valr.
 
   Section INDEXED_AWAY.
   Variable ofsw ofsr : Z.
@@ -34,7 +33,7 @@ Section MEMORY_WRITE.
     forall RANGER : 0 <= ofsr <= Ptrofs.modulus - largest_size_chunk,
     forall SWAPPABLE :    ofsw + size_chunk chunkw <= ofsr
                        \/ ofsr + size_chunk chunkr <= ofsw,
-    Mem.loadv chunkr m2 addrr = Some valr.
+    Mem.loadv chunkr m2 addrr =  Mem.loadv chunkr m addrr.
   Proof.
     intros.
     
@@ -42,14 +41,13 @@ Section MEMORY_WRITE.
     pose proof (max_size_chunk chunkw) as size_chunkw_bounded.
     try change (Ptrofs.modulus - largest_size_chunk) with 4294967288 in *.
     try change (Ptrofs.modulus - largest_size_chunk) with 18446744073709551608 in *.
-    destruct addrr ; simpl in * ; try discriminate.
-    unfold eval_addressing in *.
+    destruct addrr ; simpl in * ; trivial.
+    unfold eval_addressing, eval_addressing32, eval_addressing64 in *.
     destruct Archi.ptr64 eqn:PTR64; destruct base; simpl in *; try discriminate.
     rewrite PTR64 in *.
     
     inv ADDRR.
     inv ADDRW.
-    rewrite <- READ.
     eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
     exact STORE.
     right.
@@ -84,7 +82,7 @@ Section MEMORY_WRITE.
   
   Theorem load_store_away :
     can_swap_accesses_ofs ofsr chunkr ofsw chunkw = true ->
-    Mem.loadv chunkr m2 addrr = Some valr.
+    Mem.loadv chunkr m2 addrr = Mem.loadv chunkr m addrr.
   Proof.
     intro SWAP.
     unfold can_swap_accesses_ofs in SWAP.
@@ -113,9 +111,20 @@ Section MEMORY_WRITE.
       destruct b; reflexivity.
     Qed.
 
+    (* not needed
+    Lemma bool_cases_same:
+      forall {T : Type},
+      forall b : bool,
+      forall x : T,
+        (if b then x else x) = x.
+    Proof.
+      destruct b; reflexivity.
+    Qed.
+     *)
+
     Lemma load_store_diff_globals :
       symw <> symr ->
-      Mem.loadv chunkr m2 addrr = Some valr.
+      Mem.loadv chunkr m2 addrr = Mem.loadv chunkr m addrr.
     Proof.
       intros.
       unfold eval_addressing in *.
@@ -127,7 +136,7 @@ Section MEMORY_WRITE.
       destruct ((Genv.genv_symb genv) ! symw) as [bw |] eqn:SYMW; inv ADDRW.
       2: simpl in STORE; discriminate.
       destruct ((Genv.genv_symb genv) ! symr) as [br |] eqn:SYMR; inv ADDRR.
-      2: simpl in READ; discriminate.
+      2: reflexivity.
       assert (br <> bw).
       {
         intro EQ.
@@ -138,7 +147,6 @@ Section MEMORY_WRITE.
         }
         congruence.
       }
-      rewrite <- READ.
       eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := bw).
       - exact STORE.
       - left. assumption.
@@ -158,7 +166,7 @@ Section MEMORY_WRITE.
     forall RANGER : 0 <= (Ptrofs.unsigned ofsr) <= Ptrofs.modulus - largest_size_chunk,
     forall SWAPPABLE : (Ptrofs.unsigned ofsw) + size_chunk chunkw <= (Ptrofs.unsigned ofsr)
                     \/ (Ptrofs.unsigned ofsr) + size_chunk chunkr <= (Ptrofs.unsigned ofsw),
-    Mem.loadv chunkr m2 addrr = Some valr.
+    Mem.loadv chunkr m2 addrr = Mem.loadv chunkr m addrr.
   Proof.
     intros.
     
@@ -168,40 +176,24 @@ Section MEMORY_WRITE.
     try change (Ptrofs.modulus - largest_size_chunk) with 4294967288 in *.
     try change (Ptrofs.modulus - largest_size_chunk) with 18446744073709551608 in *.
     unfold eval_addressing, eval_addressing32, eval_addressing64 in *.
-    destruct Archi.ptr64 eqn:PTR64.
 
-    {
-      unfold Genv.symbol_address in *.
-      inv ADDRR.
-      inv ADDRW.
-      destruct (Genv.find_symbol genv sym).
-      2: discriminate.
-      
-      rewrite <- READ.
-      eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
-      exact STORE.
-      right.
-      tauto.
-    }
-
-    {
-      unfold Genv.symbol_address in *.
-      inv ADDRR.
-      inv ADDRW.
-      destruct (Genv.find_symbol genv sym).
-      2: discriminate.
-      
-      rewrite <- READ.
-      eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
-      exact STORE.
-      right.
-      tauto.
-    }
+    rewrite ptr64_cases in ADDRR.
+    rewrite ptr64_cases in ADDRW.
+    unfold Genv.symbol_address in *.
+    inv ADDRR.
+    inv ADDRW.
+    destruct (Genv.find_symbol genv sym).
+    2: discriminate.
+    
+    eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
+    exact STORE.
+    right.
+    tauto.
   Qed.
 
   Lemma load_store_glob_away :
     (can_swap_accesses_ofs (Ptrofs.unsigned ofsr) chunkr (Ptrofs.unsigned ofsw) chunkw) = true ->
-    Mem.loadv chunkr m2 addrr = Some valr.
+    Mem.loadv chunkr m2 addrr = Mem.loadv chunkr m addrr.
   Proof.
     intro SWAP.
     unfold can_swap_accesses_ofs in SWAP.
@@ -223,16 +215,15 @@ Section SOUNDNESS.
 
 Lemma may_overlap_sound:
   forall m m' : mem,
-  forall chunk addr args chunk' addr' args' v a a' vl rs,
+  forall chunk addr args chunk' addr' args' v a a' rs,
     (eval_addressing genv sp addr (rs ## args)) = Some a ->
     (eval_addressing genv sp addr' (rs ## args')) = Some a' ->
     (may_overlap chunk addr args chunk' addr' args') = false ->
     (Mem.storev chunk m a v) = Some m' ->
-    (Mem.loadv chunk' m  a') = Some vl ->
-    (Mem.loadv chunk' m' a') = Some vl.
+    (Mem.loadv chunk' m' a') = (Mem.loadv chunk' m  a').
 Proof.
   intros until rs.
-  intros ADDR ADDR' OVERLAP STORE LOAD.
+  intros ADDR ADDR' OVERLAP STORE.
   destruct addr; destruct addr'; try discriminate.
   { (* Aindexed / Aindexed *)
   destruct args as [ | base [ | ]]. 1,3: discriminate.

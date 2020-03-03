@@ -34,9 +34,8 @@ Section MEMORY_WRITE.
   Variable chunkw chunkr : memory_chunk.
   Variable base : val.
   
-  Variable addrw addrr valw valr : val.
+  Variable addrw addrr valw : val.
   Hypothesis STORE : Mem.storev chunkw m addrw valw = Some m2.
-  Hypothesis READ : Mem.loadv chunkr m addrr = Some valr.
 
   Section INDEXED_AWAY.
   Variable ofsw ofsr : int.
@@ -50,7 +49,7 @@ Section MEMORY_WRITE.
     forall RANGER : 0 <= Int.unsigned ofsr <= Ptrofs.modulus - largest_size_chunk,
     forall SWAPPABLE :    Int.unsigned ofsw + size_chunk chunkw <= Int.unsigned ofsr
                        \/ Int.unsigned ofsr + size_chunk chunkr <= Int.unsigned ofsw,
-    Mem.loadv chunkr m2 addrr = Some valr.
+    Mem.loadv chunkr m2 addrr = Mem.loadv chunkr m addrr.
   Proof.
     intros.
     
@@ -62,7 +61,6 @@ Section MEMORY_WRITE.
     simpl in *.
     inv ADDRR.
     inv ADDRW.
-    rewrite <- READ.
     destruct base; try discriminate.
     eapply Mem.load_store_other with (chunk := chunkw) (v := valw) (b := b).
     exact STORE.
@@ -83,7 +81,7 @@ Section MEMORY_WRITE.
   
   Theorem load_store_away :
     can_swap_accesses_ofs (Int.unsigned ofsr) chunkr (Int.unsigned ofsw) chunkw = true ->
-    Mem.loadv chunkr m2 addrr = Some valr.
+    Mem.loadv chunkr m2 addrr =  Mem.loadv chunkr m addrr.
   Proof.
     intro SWAP.
     unfold can_swap_accesses_ofs in SWAP.
@@ -105,16 +103,15 @@ Section SOUNDNESS.
 
 Lemma may_overlap_sound:
   forall m m' : mem,
-  forall chunk addr args chunk' addr' args' v a a' vl rs,
+  forall chunk addr args chunk' addr' args' v a a' rs,
     (eval_addressing genv sp addr (rs ## args)) = Some a ->
     (eval_addressing genv sp addr' (rs ## args')) = Some a' ->
     (may_overlap chunk addr args chunk' addr' args') = false ->
     (Mem.storev chunk m a v) = Some m' ->
-    (Mem.loadv chunk' m  a') = Some vl ->
-    (Mem.loadv chunk' m' a') = Some vl.
+    (Mem.loadv chunk' m'  a') = (Mem.loadv chunk' m a').
 Proof.
   intros until rs.
-  intros ADDR ADDR' OVERLAP STORE LOAD.
+  intros ADDR ADDR' OVERLAP STORE.
   destruct addr; destruct addr'; try discriminate.
   { (* Aindexed / Aindexed *)
   destruct args as [ | base [ | ]]. 1,3: discriminate.
