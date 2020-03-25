@@ -400,9 +400,15 @@ Lemma transl_find_label:
   end.
 Proof.
   intros. monadInv H. destruct (zlt Ptrofs.max_unsigned (list_length_z x.(fn_code))); inv EQ0.
-  monadInv EQ. rewrite transl_code'_transl_code in EQ0. unfold fn_code. 
-  simpl. destruct (storeptr_label X30 XSP (fn_retaddr_ofs f) x) as [A B]; rewrite B. 
-  eapply transl_code_label; eauto.
+  monadInv EQ.
+  destruct (is_leaf_function f); monadInv EQ1.
+  - rewrite transl_code'_transl_code in EQ0. unfold fn_code. 
+    simpl.
+    eapply transl_code_label; eauto.
+  - rewrite transl_code'_transl_code in EQ0. unfold fn_code. 
+    simpl.
+    destruct (storeptr_label X30 XSP (fn_retaddr_ofs f) x) as [A B]; rewrite B. 
+    eapply transl_code_label; eauto.
 Qed.
 
 End TRANSL_LABEL.
@@ -445,10 +451,14 @@ Proof.
   destruct i; try (intros [A B]; apply A). intros. subst c0. repeat constructor.
 - intros. monadInv H0.
   destruct (zlt Ptrofs.max_unsigned (list_length_z x.(fn_code))); inv EQ0. monadInv EQ.
-  rewrite transl_code'_transl_code in EQ0.
-  exists x; exists true; split; auto. unfold fn_code.
-  constructor. apply (storeptr_label X30 XSP (fn_retaddr_ofs f0) x).
-- exact transf_function_no_overflow.
+  destruct (is_leaf_function f0); monadInv EQ1.
+  + rewrite transl_code'_transl_code in EQ0.
+    exists x; exists true; split; auto. unfold fn_code.
+    constructor. constructor.
+  + rewrite transl_code'_transl_code in EQ0.
+    exists x; exists true; split; auto. unfold fn_code.
+    constructor. apply (storeptr_label X30 XSP (fn_retaddr_ofs f0) x).
+  - exact transf_function_no_overflow.
 Qed.
 
 (** * Proof of semantic preservation *)
