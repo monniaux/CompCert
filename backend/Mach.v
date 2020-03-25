@@ -87,6 +87,12 @@ Definition funsig (fd: fundef) :=
   end.
 
 Definition genv := Genv.t fundef unit.
+(** A leaf function is a function that contains no [Mcall] instruction. *)
+
+Definition is_leaf_function (f: function) : bool :=
+  List.forallb
+    (fun i => match i with Mcall _ _ => false | _ => true end)
+    f.(fn_code).  
 
 (** * Operational semantics *)
 
@@ -347,7 +353,7 @@ Inductive step: state -> trace -> state -> Prop :=
       find_function_ptr ge ros rs = Some f' ->
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
-      load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->
+      (is_leaf_function f = false -> load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s)) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
       step (State s fb (Vptr stk soff) (Mtailcall sig ros :: c) rs m)
         E0 (Callstate s f' rs m')
@@ -391,7 +397,7 @@ Inductive step: state -> trace -> state -> Prop :=
       forall s fb stk soff c rs m f m',
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
-      load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->
+      (is_leaf_function f = false -> load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s)) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
       step (State s fb (Vptr stk soff) (Mreturn :: c) rs m)
         E0 (Returnstate s rs m')
@@ -438,12 +444,6 @@ Definition semantics (rao: function -> code -> ptrofs -> Prop) (p: program) :=
 
 (** * Leaf functions *)
 
-(** A leaf function is a function that contains no [Mcall] instruction. *)
-
-Definition is_leaf_function (f: function) : bool :=
-  List.forallb
-    (fun i => match i with Mcall _ _ => false | _ => true end)
-    f.(fn_code).  
 
 (** Semantic characterization of leaf functions: 
     functions in the call stack are never leaf functions. *)
