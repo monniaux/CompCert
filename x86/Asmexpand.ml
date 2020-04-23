@@ -492,12 +492,21 @@ let set_al sg =
   end
 
 (* Expansion of instructions *)
-
+let emit_xor_canary () = true
+let xor_canary_rotation = 27
+                        
 let expand_instruction instr =
   match instr with
   | Pallocframe (sz, ofs_ra, ofs_link) ->
      if Archi.ptr64 then begin
        let (sz, save_regs) = sp_adjustment_64 sz in
+       (if emit_xor_canary () then
+          begin
+            emit (Pmovq_rm (RAX, (linear_addr RSP (Z.of_uint 0))));
+            emit (Pxor_canary RAX);
+            emit (Prorq_ri(RAX, (Z.of_uint xor_canary_rotation)));
+            emit (Pmovq_mr ((linear_addr RSP (Z.of_uint 0)), RAX));
+          end);
        (* Allocate frame *)
        let sz' = Z.of_uint sz in
        emit (Psubq_ri (RSP, sz'));
@@ -531,10 +540,19 @@ let expand_instruction instr =
   | Pfreeframe(sz, ofs_ra, ofs_link) ->
      if Archi.ptr64 then begin
        let (sz, _) = sp_adjustment_64 sz in
-       emit (Paddq_ri (RSP, Z.of_uint sz))
+       emit (Paddq_ri (RSP, Z.of_uint sz));
+       (if emit_xor_canary () then
+          begin
+            emit (Ppushq RAX);
+            emit (Pmovq_rm (RAX, (linear_addr RSP (Z.of_uint 8))));
+            emit (Prorq_ri(RAX, (Z.of_uint (64-xor_canary_rotation))));
+            emit (Pxor_canary RAX);
+            emit (Pmovq_mr ((linear_addr RSP (Z.of_uint 8)), RAX));
+            emit (Ppopq RAX)
+          end);
      end else begin
        let sz = sp_adjustment_32 sz in
-       emit (Paddl_ri (RSP, Z.of_uint sz))
+       emit (Paddl_ri (RSP, Z.of_uint sz));
      end
   | Pjmp_s(_, sg) | Pjmp_r(_, sg) | Pcall_s(_, sg) | Pcall_r(_, sg) ->
      set_al sg;

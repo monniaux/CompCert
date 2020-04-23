@@ -395,7 +395,7 @@ module Target(System: SYSTEM):TARGET =
         fprintf oc "%a(%%rip)" label lbl
       end
 
-
+    let canary_position = "%fs:40" (* LINUX *)
 
 (* Printing of instructions *)
 
@@ -809,6 +809,12 @@ module Target(System: SYSTEM):TARGET =
 	  fprintf oc "	subl	$%ld, %a\n" (camlint_of_coqint n) ireg32 res;
       | Psubq_ri (res,n) ->
 	  fprintf oc "	subq	%a, %a\n" intconst64 n ireg64 res;
+      | Pxor_canary (res) ->
+         fprintf oc "	xorq	%s, %a\n" canary_position ireg64 res;
+      | Ppushq (res) ->
+         fprintf oc "	pushq	%a\n" ireg64 res;
+      | Ppopq (res) ->
+         fprintf oc "	popq	%a\n" ireg64 res;
       (* Pseudo-instructions *)
       | Plabel(l) ->
           fprintf oc "%a:\n" label (transl_label l)

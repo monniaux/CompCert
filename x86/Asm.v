@@ -289,7 +289,10 @@ Inductive instruction: Type :=
   | Psbbl_rr (rd: ireg) (r2: ireg)
   | Psqrtsd (rd: freg) (r1: freg)
   | Psubl_ri (rd: ireg) (n: int)
-  | Psubq_ri (rd: ireg) (n: int64).
+  | Psubq_ri (rd: ireg) (n: int64)
+  | Pxor_canary (rd : ireg)
+  | Ppushq (rd : ireg)
+  | Ppopq (rd : ireg).
 
 Definition code := list instruction.
 Record function : Type := mkfunction { fn_sig: signature; fn_code: code }.
@@ -1008,7 +1011,10 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Psbbl_rr _ _
   | Psqrtsd _ _
   | Psubl_ri _ _
-  | Psubq_ri _ _ => Stuck
+  | Psubq_ri _ _
+  | Pxor_canary _
+  | Ppushq _
+  | Ppopq _ => Stuck
   end.
 
 (** Translation of the LTL/Linear/Mach view of machine registers
